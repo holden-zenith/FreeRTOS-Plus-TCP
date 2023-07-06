@@ -49,15 +49,15 @@
 #include "phyHandling.h"
 
 /* ST includes. */
-#if defined(STM32F4)
+#if defined(STM32F4xx)
     #include "stm32f4xx_hal_eth.h"
-#elif defined(STM32F7)
+#elif defined(STM32F7xx)
     #include "stm32f7xx_hal_eth.h"
-#elif defined(STM32H7)
+#elif defined(STM32H7xx)
     #include "stm32h7xx_hal_eth.h"
-#elif defined(STM32H5)
-    /* Untested */
-    #include "stm32h5xx_hal_eth.h"
+#elif defined(STM32H5xx)
+    /* #include "stm32h5xx_hal_eth.h" */
+    #include "stm32h5xx_hal.h"
 #else
     #error Unknown STM32 Family for NetworkInterface
 #endif
@@ -91,6 +91,14 @@
 
 #ifndef ipconfigUSE_RMII
     #define ipconfigUSE_RMII 1
+#endif
+
+#ifndef ETH_RX_BUF_SIZE
+    #define ETH_RX_BUF_SIZE 1524
+#endif
+
+#ifndef ETH_TX_BUF_SIZE
+    #define ETH_TX_BUF_SIZE 1524
 #endif
 
 /*-----------------------------------------------------------*/
@@ -149,6 +157,8 @@ static ETH_TxPacketConfig xTxConfig;
     static const uint8_t xLLMNR_MACAddress[] = { 0x01, 0x00, 0x5E, 0x00, 0x00, 0xFC };
 #endif*/
 
+static NetworkInterface_t * pxMyInterface = NULL;
+
 static TaskHandle_t xEMACTaskHandle;
 
 static SemaphoreHandle_t xTxMutex;
@@ -202,7 +212,7 @@ void vNetworkInterfaceAllocateRAMToBuffers( NetworkBufferDescriptor_t pxNetworkB
 
 /*-----------------------------------------------------------*/
 
-BaseType_t xGetPhyLinkStatus( void )
+static BaseType_t xSTM32_GetPhyLinkStatus( NetworkInterface_t * pxInterface )
 {
     BaseType_t xReturn = pdFAIL;
 
@@ -215,11 +225,12 @@ BaseType_t xGetPhyLinkStatus( void )
 }
 /*-----------------------------------------------------------*/
 
-BaseType_t xNetworkInterfaceInitialise( void )
+static BaseType_t xSTM32_NetworkInterfaceInitialise( NetworkInterface_t * pxInterface )
 {
     BaseType_t xResult = pdFAIL;
     BaseType_t xPhyResult;
     HAL_StatusTypeDef xHalResult;
+    NetworkEndPoint_t * pxEndPoint;
 
     static eMAC_INIT_STATUS_TYPE xMacInitStatus = eMACInit;
 
@@ -278,8 +289,13 @@ BaseType_t xNetworkInterfaceInitialise( void )
 
         if( xEthHandle.Instance == NULL )
         {
+            pxMyInterface = pxInterface;
+
+            pxEndPoint = FreeRTOS_FirstEndPoint( pxInterface );
+            configASSERT( pxEndPoint != NULL );
+
             xEthHandle.Instance = ETH;
-            xEthHandle.Init.MACAddr = ( uint8_t * ) FreeRTOS_GetMACAddress();
+            xEthHandle.Init.MACAddr = ( uint8_t * ) pxEndPoint->xMACAddress.ucBytes;
             xEthHandle.Init.MediaInterface = ( ipconfigUSE_RMII != 0 ) ? HAL_ETH_RMII_MODE : HAL_ETH_MII_MODE;
             xEthHandle.Init.TxDesc = DMATxDscrTab;
             xEthHandle.Init.RxDesc = DMARxDscrTab;
@@ -343,7 +359,7 @@ BaseType_t xNetworkInterfaceInitialise( void )
         configASSERT( xPhyResult == 0 );
     }
 
-    if ( xGetPhyLinkStatus() != pdFAIL )
+    if ( xSTM32_GetPhyLinkStatus( pxInterface ) != pdFAIL )
     {
         ETH_MACConfigTypeDef MACConf;
         xHalResult = HAL_ETH_GetMACConfig( &xEthHandle , &MACConf );
@@ -363,14 +379,16 @@ BaseType_t xNetworkInterfaceInitialise( void )
 
 /*-----------------------------------------------------------*/
 
-BaseType_t xNetworkInterfaceOutput( NetworkBufferDescriptor_t * const pxDescriptor, BaseType_t xReleaseAfterSend )
+static BaseType_t xSTM32_NetworkInterfaceOutput( NetworkInterface_t * pxInterface,
+                                                   NetworkBufferDescriptor_t * const pxDescriptor,
+                                                   BaseType_t xReleaseAfterSend )
 {
     BaseType_t xResult = pdFAIL;
     /* TODO: ipconfigZERO_COPY_TX_DRIVER */
 
     if( pxDescriptor != NULL )
     {
-        if( xGetPhyLinkStatus() != pdFAIL )
+        if( xSTM32_GetPhyLinkStatus( pxInterface ) != pdFAIL )
         {
             /* TODO: Tx Optimization by setting .next? */
             ETH_BufferTypeDef xTxBuffer = {
@@ -422,6 +440,31 @@ BaseType_t xNetworkInterfaceOutput( NetworkBufferDescriptor_t * const pxDescript
 
 /*-----------------------------------------------------------*/
 
+NetworkInterface_t * pxSTM32_FillInterfaceDescriptor( BaseType_t xEMACIndex, 
+                                                      NetworkInterface_t * pxInterface )
+{
+    static char pcName[ 17 ];
+
+/* This function pxSTM32Hxx_FillInterfaceDescriptor() adds a network-interface.
+ * Make sure that the object pointed to by 'pxInterface'
+ * is declared static or global, and that it will remain to exist. */
+
+    snprintf( pcName, sizeof( pcName ), "eth%u", ( unsigned ) xEMACIndex );
+
+    memset( pxInterface, '\0', sizeof( *pxInterface ) );
+    pxInterface->pcName = pcName;                    /* Just for logging, debugging. */
+    pxInterface->pvArgument = ( void * ) xEMACIndex; /* Has only meaning for the driver functions. */
+    pxInterface->pfInitialise = xSTM32_NetworkInterfaceInitialise;
+    pxInterface->pfOutput = xSTM32_NetworkInterfaceOutput;
+    pxInterface->pfGetPhyLinkStatus = xSTM32_GetPhyLinkStatus;
+
+    FreeRTOS_AddNetworkInterface( pxInterface );
+
+    return pxInterface;
+}
+
+/*-----------------------------------------------------------*/
+
 static BaseType_t prvNetworkInterfaceInput( void )
 {
     /* TODO: ipconfigZERO_COPY_RX_DRIVER */
@@ -436,6 +479,9 @@ static BaseType_t prvNetworkInterfaceInput( void )
                 .eEventType = eNetworkRxEvent,
                 .pvData = ( void * ) pStartDescriptor
             };
+
+            pStartDescriptor->pxInterface = pxMyInterface;
+            pStartDescriptor->pxEndPoint = FreeRTOS_MatchingEndpoint( pxMyInterface, pStartDescriptor->pucEthernetBuffer );
 
             if( xSendEventStructToIPTask( &xRxEvent, ( TickType_t ) 0U ) != pdPASS )
             {
@@ -622,7 +668,7 @@ static void prvEthernetUpdateConfig( void )
     HAL_StatusTypeDef xHalResult;
     /* TODO: xEthHandle.gState == Check HAL_ETH_STATE_STARTED */
 
-    if( xGetPhyLinkStatus() != pdFAIL )
+    if( xSTM32_GetPhyLinkStatus( pxMyInterface ) != pdFAIL )
     {
         ETH_MACConfigTypeDef MACConf;
         xHalResult = HAL_ETH_GetMACConfig( &xEthHandle , &MACConf );
@@ -644,7 +690,7 @@ static void prvEthernetUpdateConfig( void )
             xPhyFixedValue( &xPhyObject, xPhyGetMask( &xPhyObject ) );
         #endif
 
-        if( xGetPhyLinkStatus() != pdFAIL )
+        if( xSTM32_GetPhyLinkStatus( pxMyInterface ) != pdFAIL )
         {
             ( void ) HAL_ETH_Start_IT( &xEthHandle );
         }
