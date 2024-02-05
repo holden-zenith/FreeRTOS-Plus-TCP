@@ -45,6 +45,7 @@
 #include "FreeRTOS_ARP.h"
 #include "FreeRTOS_UDP_IP.h"
 #include "FreeRTOS_Routing.h"
+#include "FreeRTOS_ICMP.h"
 #include "FreeRTOS_ND.h"
 #if ( ipconfigUSE_LLMNR == 1 )
     #include "FreeRTOS_DNS.h"
@@ -200,7 +201,7 @@
 
             /* Set ICMP header. */
             ( void ) memset( xRASolicitationRequest, 0, sizeof( *xRASolicitationRequest ) );
-            xRASolicitationRequest->ucTypeOfMessage = ipICMP_ROUTER_SOLICITATION_IPv6;
+            xRASolicitationRequest->ucTypeOfMessage = ipICMPv6_ROUTER_SOLICITATION;
 
             /*  __XX__ revisit on why commented out
              *  xRASolicitationRequest->ucOptionType = ndICMP_SOURCE_LINK_LAYER_ADDRESS;

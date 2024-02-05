@@ -47,19 +47,6 @@
 #define ipPROTOCOL_ICMP_IPv6                     ( 58U )
 #define ipTYPE_IPv6                              ( 0x60U )
 
-/* Some IPv6 ICMP requests. */
-#define ipICMP_DEST_UNREACHABLE_IPv6             ( ( uint8_t ) 1U )
-#define ipICMP_PACKET_TOO_BIG_IPv6               ( ( uint8_t ) 2U )
-#define ipICMP_TIME_EXCEEDED_IPv6                ( ( uint8_t ) 3U )
-#define ipICMP_PARAMETER_PROBLEM_IPv6            ( ( uint8_t ) 4U )
-#define ipICMP_PING_REQUEST_IPv6                 ( ( uint8_t ) 128U )
-#define ipICMP_PING_REPLY_IPv6                   ( ( uint8_t ) 129U )
-#define ipICMP_ROUTER_SOLICITATION_IPv6          ( ( uint8_t ) 133U )
-#define ipICMP_ROUTER_ADVERTISEMENT_IPv6         ( ( uint8_t ) 134U )
-#define ipICMP_NEIGHBOR_SOLICITATION_IPv6        ( ( uint8_t ) 135U )
-#define ipICMP_NEIGHBOR_ADVERTISEMENT_IPv6       ( ( uint8_t ) 136U )
-
-
 #define ipIPv6_EXT_HEADER_HOP_BY_HOP             0U
 #define ipIPv6_EXT_HEADER_ROUTING_HEADER         43U
 #define ipIPv6_EXT_HEADER_FRAGMENT_HEADER        44U

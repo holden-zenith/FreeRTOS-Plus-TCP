@@ -82,6 +82,7 @@ extern uint32_t ulApplicationGetNextSequenceNumber( uint32_t ulSourceAddress,
 #define ipPROTOCOL_IGMP                            ( 2U )
 #define ipPROTOCOL_TCP                             ( 6U )
 #define ipPROTOCOL_UDP                             ( 17U )
+#define ipPROTOCOL_ICMPv6                          ( 58U )
 
 /* The character used to fill ICMP echo requests, and therefore also the
  * character expected to fill ICMP echo replies. */

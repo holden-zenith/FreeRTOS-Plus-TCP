@@ -25,7 +25,7 @@
 
 /**
  * @file FreeRTOS_ND.c
- * @brief Implements a few functions that handle Neighbour Discovery and other ICMPv6 messages.
+ * @brief Implements a few functions that handle Neighbour Discovery
  */
 
 /* Standard includes. */
@@ -44,6 +44,7 @@
 #include "FreeRTOS_ARP.h"
 #include "FreeRTOS_UDP_IP.h"
 #include "FreeRTOS_Routing.h"
+#include "FreeRTOS_ICMP.h"
 #include "FreeRTOS_ND.h"
 #include "FreeRTOS_IP_Timers.h"
 
@@ -54,11 +55,6 @@
 
 /* The entire module FreeRTOS_ND.c is skipped when IPv6 is not used. */
 #if ( ipconfigUSE_IPv6 != 0 )
-
-/** @brief Type of Neighbour Advertisement packets - SOLICIT. */
-    #define ndICMPv6_FLAG_SOLICITED                       0x40000000U
-/** @brief Type of Neighbour Advertisement packets - UPDATE. */
-    #define ndICMPv6_FLAG_UPDATE                          0x20000000U
 
 /** @brief A block time of 0 simply means "don't block". */
     #define ndDONT_BLOCK                                  ( ( TickType_t ) 0 )
@@ -91,13 +87,6 @@
                                                 MACAddress_t * const pxMACAddress,
                                                 NetworkEndPoint_t ** ppxEndPoint );
 
-    #if ( ipconfigHAS_PRINTF == 1 )
-        static const char * pcMessageType( BaseType_t xType );
-    #endif
-
-/** @brief Find the first end-point of type IPv6. */
-    static NetworkEndPoint_t * pxFindLocalEndpoint( void );
-
 /** @brief The ND cache. */
     static NDCacheRow_t xNDCache[ ipconfigND_CACHE_ENTRIES ];
 
@@ -109,33 +98,6 @@
  *  ff02::5: All OSPFv3 routers
  *  ff02::a: All EIGRP (IPv6) routers
  */
-
-/**
- * @brief Find the first end-point of type IPv6.
- *
- * @return The first IPv6 end-point found.
- */
-    static NetworkEndPoint_t * pxFindLocalEndpoint( void )
-    {
-        NetworkEndPoint_t * pxEndPoint;
-
-        for( pxEndPoint = FreeRTOS_FirstEndPoint( NULL );
-             pxEndPoint != NULL;
-             pxEndPoint = FreeRTOS_NextEndPoint( NULL, pxEndPoint ) )
-        {
-            if( pxEndPoint->bits.bIPv6 == pdTRUE_UNSIGNED )
-            {
-                IPv6_Type_t eType = xIPv6_GetIPType( &( pxEndPoint->ipv6_settings.xIPAddress ) );
-
-                if( eType == eIPv6_LinkLocal )
-                {
-                    break;
-                }
-            }
-        }
-
-        return pxEndPoint;
-    }
 
 /**
  * @brief See if the MAC-address can be resolved because it is a multi-cast address.
@@ -159,7 +121,7 @@
 
             if( ppxEndPoint != NULL )
             {
-                *ppxEndPoint = pxFindLocalEndpoint();
+                *ppxEndPoint = pxFindLocalEndpoint_IPv6();
             }
 
             eReturn = eARPCacheHit;
@@ -528,47 +490,6 @@
 /*-----------------------------------------------------------*/
 
 /**
- * @brief Return an ICMPv6 packet to the peer.
- *
- * @param[in] pxNetworkBuffer The Ethernet packet.
- * @param[in] uxICMPSize The number of bytes to be sent.
- */
-    static void prvReturnICMP_IPv6( NetworkBufferDescriptor_t * const pxNetworkBuffer,
-                                    size_t uxICMPSize )
-    {
-        const NetworkEndPoint_t * pxEndPoint = pxNetworkBuffer->pxEndPoint;
-
-        /* MISRA Ref 11.3.1 [Misaligned access] */
-        /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-113 */
-        /* coverity[misra_c_2012_rule_11_3_violation] */
-        ICMPPacket_IPv6_t * pxICMPPacket = ( ( ICMPPacket_IPv6_t * ) pxNetworkBuffer->pucEthernetBuffer );
-
-        ( void ) memcpy( pxICMPPacket->xIPHeader.xDestinationAddress.ucBytes, pxICMPPacket->xIPHeader.xSourceAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS );
-        ( void ) memcpy( pxICMPPacket->xIPHeader.xSourceAddress.ucBytes, pxEndPoint->ipv6_settings.xIPAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS );
-        pxICMPPacket->xIPHeader.usPayloadLength = FreeRTOS_htons( uxICMPSize );
-
-        /* Important: tell NIC driver how many bytes must be sent */
-        pxNetworkBuffer->xDataLength = ( size_t ) ( ipSIZE_OF_ETH_HEADER + ipSIZE_OF_IPv6_HEADER + uxICMPSize );
-
-        #if ( ipconfigDRIVER_INCLUDED_TX_IP_CHECKSUM == 0 )
-        {
-            /* calculate the ICMPv6 checksum for outgoing package */
-            ( void ) usGenerateProtocolChecksum( pxNetworkBuffer->pucEthernetBuffer, pxNetworkBuffer->xDataLength, pdTRUE );
-        }
-        #else
-        {
-            /* Many EMAC peripherals will only calculate the ICMP checksum
-             * correctly if the field is nulled beforehand. */
-            pxICMPPacket->xICMPHeaderIPv6.usChecksum = 0;
-        }
-        #endif
-
-        /* This function will fill in the Ethernet addresses and send the packet */
-        vReturnEthernetFrame( pxNetworkBuffer, pdFALSE );
-    }
-/*-----------------------------------------------------------*/
-
-/**
  * @brief Send out an ND request for the IPv6 address contained in pxNetworkBuffer, and
  *        add an entry into the ND table that indicates that an ND reply is outstanding
  *        so re-transmissions can be generated.
@@ -654,7 +575,7 @@
 
                 /* Set ICMP header. */
                 ( void ) memset( pxICMPHeader_IPv6, 0, sizeof( *pxICMPHeader_IPv6 ) );
-                pxICMPHeader_IPv6->ucTypeOfMessage = ipICMP_NEIGHBOR_SOLICITATION_IPv6;
+                pxICMPHeader_IPv6->ucTypeOfMessage = ipICMPv6_NEIGHBOR_SOLICITATION;
                 ( void ) memcpy( pxICMPHeader_IPv6->xIPv6Address.ucBytes, pxIPAddress->ucBytes, ipSIZE_OF_IPv6_ADDRESS );
                 pxICMPHeader_IPv6->ucOptionType = ndICMP_SOURCE_LINK_LAYER_ADDRESS;
                 pxICMPHeader_IPv6->ucOptionLength = 1U; /* times 8 bytes. */
@@ -789,7 +710,7 @@
                     FreeRTOS_printf( ( "ICMP send from %pip\n", ( void * ) pxICMPPacket->xIPHeader.xSourceAddress.ucBytes ) );
 
                     /* Fill in the basic header information. */
-                    pxICMPHeader->ucTypeOfMessage = ipICMP_PING_REQUEST_IPv6;
+                    pxICMPHeader->ucTypeOfMessage = ipICMPv6_PING_REQUEST;
                     pxICMPHeader->ucTypeOfService = 0;
                     pxICMPHeader->usIdentifier = FreeRTOS_htons( usSequenceNumber );
                     pxICMPHeader->usSequenceNumber = FreeRTOS_htons( usSequenceNumber );
@@ -840,315 +761,6 @@
         }
 
     #endif /* ipconfigSUPPORT_OUTGOING_PINGS == 1 */
-/*-----------------------------------------------------------*/
-
-
-    #if ( ipconfigHAS_PRINTF == 1 )
-
-/**
- * @brief Returns a printable string for the major ICMPv6 message types.  Used for
- *        debugging only.
- *
- * @param[in] xType The type of message.
- *
- * @return A null-terminated string that represents the type the kind of message.
- */
-        static const char * pcMessageType( BaseType_t xType )
-        {
-            const char * pcReturn;
-
-            switch( ( uint8_t ) xType )
-            {
-                case ipICMP_DEST_UNREACHABLE_IPv6:
-                    pcReturn = "DEST_UNREACHABLE";
-                    break;
-
-                case ipICMP_PACKET_TOO_BIG_IPv6:
-                    pcReturn = "PACKET_TOO_BIG";
-                    break;
-
-                case ipICMP_TIME_EXCEEDED_IPv6:
-                    pcReturn = "TIME_EXCEEDED";
-                    break;
-
-                case ipICMP_PARAMETER_PROBLEM_IPv6:
-                    pcReturn = "PARAMETER_PROBLEM";
-                    break;
-
-                case ipICMP_PING_REQUEST_IPv6:
-                    pcReturn = "PING_REQUEST";
-                    break;
-
-                case ipICMP_PING_REPLY_IPv6:
-                    pcReturn = "PING_REPLY";
-                    break;
-
-                case ipICMP_ROUTER_SOLICITATION_IPv6:
-                    pcReturn = "ROUTER_SOL";
-                    break;
-
-                case ipICMP_ROUTER_ADVERTISEMENT_IPv6:
-                    pcReturn = "ROUTER_ADV";
-                    break;
-
-                case ipICMP_NEIGHBOR_SOLICITATION_IPv6:
-                    pcReturn = "NEIGHBOR_SOL";
-                    break;
-
-                case ipICMP_NEIGHBOR_ADVERTISEMENT_IPv6:
-                    pcReturn = "NEIGHBOR_ADV";
-                    break;
-
-                default:
-                    pcReturn = "UNKNOWN ICMP";
-                    break;
-            }
-
-            return pcReturn;
-        }
-    #endif /* ( ipconfigHAS_PRINTF == 1 ) */
-/*-----------------------------------------------------------*/
-
-/**
- * @brief When a neighbour advertisement has been received, check if 'pxARPWaitingNetworkBuffer'
- *        was waiting for this new address look-up. If so, feed it to the IP-task as a new
- *        incoming packet.
- */
-    static void prvCheckWaitingBuffer( const IPv6_Address_t * pxIPv6Address )
-    {
-        /* MISRA Ref 11.3.1 [Misaligned access] */
-        /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-113 */
-        /* coverity[misra_c_2012_rule_11_3_violation] */
-        const IPPacket_IPv6_t * pxIPPacket = ( ( IPPacket_IPv6_t * ) pxARPWaitingNetworkBuffer->pucEthernetBuffer );
-        const IPHeader_IPv6_t * pxIPHeader = &( pxIPPacket->xIPHeader );
-
-        if( memcmp( pxIPv6Address->ucBytes, pxIPHeader->xSourceAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS ) == 0 )
-        {
-            FreeRTOS_printf( ( "Waiting done\n" ) );
-            IPStackEvent_t xEventMessage;
-            const TickType_t xDontBlock = ( TickType_t ) 0;
-
-            xEventMessage.eEventType = eNetworkRxEvent;
-            xEventMessage.pvData = ( void * ) pxARPWaitingNetworkBuffer;
-
-            if( xSendEventStructToIPTask( &xEventMessage, xDontBlock ) != pdPASS )
-            {
-                /* Failed to send the message, so release the network buffer. */
-                vReleaseNetworkBufferAndDescriptor( BUFFER_FROM_WHERE_CALL( 140 ) pxARPWaitingNetworkBuffer );
-            }
-
-            /* Clear the buffer. */
-            pxARPWaitingNetworkBuffer = NULL;
-
-            /* Found an ARP resolution, disable ARP resolution timer. */
-            vIPSetARPResolutionTimerEnableState( pdFALSE );
-
-            iptrace_DELAYED_ARP_REQUEST_REPLIED();
-        }
-    }
-/*-----------------------------------------------------------*/
-
-/**
- * @brief Process an ICMPv6 packet and send replies when applicable.
- *
- * @param[in] pxNetworkBuffer The Ethernet packet which contains an IPv6 message.
- *
- * @return A const value 'eReleaseBuffer' which means that the network must still be released.
- */
-    eFrameProcessingResult_t prvProcessICMPMessage_IPv6( NetworkBufferDescriptor_t * const pxNetworkBuffer )
-    {
-        /* MISRA Ref 11.3.1 [Misaligned access] */
-        /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-113 */
-        /* coverity[misra_c_2012_rule_11_3_violation] */
-        ICMPPacket_IPv6_t * pxICMPPacket = ( ( ICMPPacket_IPv6_t * ) pxNetworkBuffer->pucEthernetBuffer );
-        /* coverity[misra_c_2012_rule_11_3_violation] */
-        ICMPHeader_IPv6_t * pxICMPHeader_IPv6 = ( ( ICMPHeader_IPv6_t * ) &( pxICMPPacket->xICMPHeaderIPv6 ) );
-        NetworkEndPoint_t * pxEndPoint = pxNetworkBuffer->pxEndPoint;
-        size_t uxNeededSize;
-
-        #if ( ipconfigHAS_PRINTF == 1 )
-        {
-            if( pxICMPHeader_IPv6->ucTypeOfMessage != ipICMP_PING_REQUEST_IPv6 )
-            {
-                char pcAddress[ 40 ];
-                FreeRTOS_printf( ( "ICMPv6_recv %d (%s) from %pip to %pip end-point = %s\n",
-                                   pxICMPHeader_IPv6->ucTypeOfMessage,
-                                   pcMessageType( ( BaseType_t ) pxICMPHeader_IPv6->ucTypeOfMessage ),
-                                   ( void * ) pxICMPPacket->xIPHeader.xSourceAddress.ucBytes,
-                                   ( void * ) pxICMPPacket->xIPHeader.xDestinationAddress.ucBytes,
-                                   pcEndpointName( pxEndPoint, pcAddress, sizeof( pcAddress ) ) ) );
-            }
-        }
-        #endif /* ( ipconfigHAS_PRINTF == 1 ) */
-
-        if( ( pxEndPoint != NULL ) && ( pxEndPoint->bits.bIPv6 != pdFALSE_UNSIGNED ) )
-        {
-            switch( pxICMPHeader_IPv6->ucTypeOfMessage )
-            {
-                case ipICMP_DEST_UNREACHABLE_IPv6:
-                case ipICMP_PACKET_TOO_BIG_IPv6:
-                case ipICMP_TIME_EXCEEDED_IPv6:
-                case ipICMP_PARAMETER_PROBLEM_IPv6:
-                    /* These message types are not implemented. They are logged here above. */
-                    break;
-
-                case ipICMP_PING_REQUEST_IPv6:
-                   {
-                       size_t uxICMPSize;
-                       uint16_t usICMPSize;
-
-                       /* Lint would complain about casting '()' immediately. */
-                       usICMPSize = FreeRTOS_ntohs( pxICMPPacket->xIPHeader.usPayloadLength );
-                       uxICMPSize = ( size_t ) usICMPSize;
-                       uxNeededSize = ( size_t ) ( ipSIZE_OF_ETH_HEADER + ipSIZE_OF_IPv6_HEADER + uxICMPSize );
-
-                       if( uxNeededSize > pxNetworkBuffer->xDataLength )
-                       {
-                           FreeRTOS_printf( ( "Too small\n" ) );
-                           break;
-                       }
-
-                       pxICMPHeader_IPv6->ucTypeOfMessage = ipICMP_PING_REPLY_IPv6;
-
-                       /* MISRA Ref 4.14.1 [The validity of values received from external sources]. */
-                       /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#directive-414. */
-                       /* coverity[misra_c_2012_directive_4_14_violation] */
-                       prvReturnICMP_IPv6( pxNetworkBuffer, uxICMPSize );
-                   }
-                   break;
-
-                    #if ( ipconfigSUPPORT_OUTGOING_PINGS != 0 )
-                        case ipICMP_PING_REPLY_IPv6:
-                           {
-                               ePingReplyStatus_t eStatus = eSuccess;
-                               /* MISRA Ref 11.3.1 [Misaligned access] */
-                               /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-113 */
-                               /* coverity[misra_c_2012_rule_11_3_violation] */
-                               const ICMPEcho_IPv6_t * pxICMPEchoHeader = ( ( const ICMPEcho_IPv6_t * ) pxICMPHeader_IPv6 );
-                               size_t uxDataLength, uxCount;
-                               const uint8_t * pucByte;
-
-                               /* Find the total length of the IP packet. */
-                               uxDataLength = ipNUMERIC_CAST( size_t, FreeRTOS_ntohs( pxICMPPacket->xIPHeader.usPayloadLength ) );
-                               uxDataLength = uxDataLength - sizeof( *pxICMPEchoHeader );
-
-                               /* Find the first byte of the data within the ICMP packet. */
-                               pucByte = ( const uint8_t * ) pxICMPEchoHeader;
-                               pucByte = &( pucByte[ sizeof( *pxICMPEchoHeader ) ] );
-
-                               /* Check each byte. */
-                               for( uxCount = 0; uxCount < uxDataLength; uxCount++ )
-                               {
-                                   if( *pucByte != ( uint8_t ) ipECHO_DATA_FILL_BYTE )
-                                   {
-                                       eStatus = eInvalidData;
-                                       break;
-                                   }
-
-                                   pucByte++;
-                               }
-
-                               /* Call back into the application to pass it the result. */
-                               vApplicationPingReplyHook( eStatus, pxICMPEchoHeader->usIdentifier );
-                           }
-                           break;
-                    #endif /* ( ipconfigSUPPORT_OUTGOING_PINGS != 0 ) */
-                case ipICMP_NEIGHBOR_SOLICITATION_IPv6:
-                   {
-                       size_t uxICMPSize;
-                       BaseType_t xCompare;
-                       NetworkEndPoint_t * pxEndPointFound = FreeRTOS_FindEndPointOnIP_IPv6( &( pxICMPHeader_IPv6->xIPv6Address ) );
-                       char pcName[ 40 ];
-                       ( void ) memset( &( pcName ), 0, sizeof( pcName ) );
-                       FreeRTOS_printf( ( "Lookup %pip : endpoint %s\n",
-                                          ( void * ) pxICMPHeader_IPv6->xIPv6Address.ucBytes,
-                                          pcEndpointName( pxEndPointFound, pcName, sizeof( pcName ) ) ) );
-
-                       if( pxEndPointFound != NULL )
-                       {
-                           pxEndPoint = pxEndPointFound;
-                       }
-
-                       pxNetworkBuffer->pxEndPoint = pxEndPoint;
-                       pxNetworkBuffer->pxInterface = pxEndPoint->pxNetworkInterface;
-
-                       uxICMPSize = sizeof( ICMPHeader_IPv6_t );
-                       uxNeededSize = ( size_t ) ( ipSIZE_OF_ETH_HEADER + ipSIZE_OF_IPv6_HEADER + uxICMPSize );
-
-                       if( uxNeededSize > pxNetworkBuffer->xDataLength )
-                       {
-                           FreeRTOS_printf( ( "Too small\n" ) );
-                           break;
-                       }
-
-                       xCompare = memcmp( pxICMPHeader_IPv6->xIPv6Address.ucBytes, pxEndPoint->ipv6_settings.xIPAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS );
-
-                       FreeRTOS_printf( ( "ND NS for %pip endpoint %pip %s\n",
-                                          ( void * ) pxICMPHeader_IPv6->xIPv6Address.ucBytes,
-                                          ( void * ) pxEndPoint->ipv6_settings.xIPAddress.ucBytes,
-                                          ( xCompare == 0 ) ? "Reply" : "Ignore" ) );
-
-                       if( xCompare == 0 )
-                       {
-                           pxICMPHeader_IPv6->ucTypeOfMessage = ipICMP_NEIGHBOR_ADVERTISEMENT_IPv6;
-                           pxICMPHeader_IPv6->ucTypeOfService = 0U;
-                           pxICMPHeader_IPv6->ulReserved = ndICMPv6_FLAG_SOLICITED | ndICMPv6_FLAG_UPDATE;
-                           pxICMPHeader_IPv6->ulReserved = FreeRTOS_htonl( pxICMPHeader_IPv6->ulReserved );
-
-                           /* Type of option. */
-                           pxICMPHeader_IPv6->ucOptionType = ndICMP_TARGET_LINK_LAYER_ADDRESS;
-                           /* Length of option in units of 8 bytes. */
-                           pxICMPHeader_IPv6->ucOptionLength = 1U;
-                           ( void ) memcpy( pxICMPHeader_IPv6->ucOptionBytes, pxEndPoint->xMACAddress.ucBytes, sizeof( MACAddress_t ) );
-                           pxICMPPacket->xIPHeader.ucHopLimit = 255U;
-                           ( void ) memcpy( pxICMPHeader_IPv6->xIPv6Address.ucBytes, pxEndPoint->ipv6_settings.xIPAddress.ucBytes, sizeof( pxICMPHeader_IPv6->xIPv6Address.ucBytes ) );
-                           prvReturnICMP_IPv6( pxNetworkBuffer, uxICMPSize );
-                       }
-                   }
-                   break;
-
-                case ipICMP_NEIGHBOR_ADVERTISEMENT_IPv6:
-                    /* MISRA Ref 11.3.1 [Misaligned access] */
-                    /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-113 */
-                    /* coverity[misra_c_2012_rule_11_3_violation] */
-                    vNDRefreshCacheEntry( ( ( const MACAddress_t * ) pxICMPHeader_IPv6->ucOptionBytes ),
-                                          &( pxICMPHeader_IPv6->xIPv6Address ),
-                                          pxEndPoint );
-                    FreeRTOS_printf( ( "NEIGHBOR_ADV from %pip\n",
-                                       ( void * ) pxICMPHeader_IPv6->xIPv6Address.ucBytes ) );
-
-                    #if ( ipconfigUSE_RA != 0 )
-
-                        /* Receive a NA ( Neighbour Advertisement ) message to see if a chosen IP-address is already in use.
-                         * This is important during SLAAC. */
-                        vReceiveNA( pxNetworkBuffer );
-                    #endif
-
-                    if( ( pxARPWaitingNetworkBuffer != NULL ) &&
-                        ( uxIPHeaderSizePacket( pxARPWaitingNetworkBuffer ) == ipSIZE_OF_IPv6_HEADER ) )
-                    {
-                        prvCheckWaitingBuffer( &( pxICMPHeader_IPv6->xIPv6Address ) );
-                    }
-
-                    break;
-
-                case ipICMP_ROUTER_SOLICITATION_IPv6:
-                    break;
-
-                    #if ( ipconfigUSE_RA != 0 )
-                        case ipICMP_ROUTER_ADVERTISEMENT_IPv6:
-                            vReceiveRA( pxNetworkBuffer );
-                            break;
-                    #endif /* ( ipconfigUSE_RA != 0 ) */
-
-                default:
-                    /* All possible values are included here above. */
-                    break;
-            } /* switch( pxICMPHeader_IPv6->ucTypeOfMessage ) */
-        }     /* if( pxEndPoint != NULL ) */
-
-        return eReleaseBuffer;
-    }
 /*-----------------------------------------------------------*/
 
 /**
@@ -1205,9 +817,9 @@
             ( void ) memcpy( pxICMPPacket->xIPHeader.xDestinationAddress.ucBytes, pcLOCAL_ALL_NODES_MULTICAST_IP, ipSIZE_OF_IPv6_ADDRESS );
 
             uxICMPSize = sizeof( ICMPHeader_IPv6_t );
-            pxICMPHeader_IPv6->ucTypeOfMessage = ipICMP_NEIGHBOR_ADVERTISEMENT_IPv6;
+            pxICMPHeader_IPv6->ucTypeOfMessage = ipICMPv6_NEIGHBOR_ADVERTISEMENT;
             pxICMPHeader_IPv6->ucTypeOfService = 0;
-            pxICMPHeader_IPv6->ulReserved = ndICMPv6_FLAG_SOLICITED | ndICMPv6_FLAG_UPDATE;
+            pxICMPHeader_IPv6->ulReserved = ipICMPv6_FLAG_SOLICITED | ipICMPv6_FLAG_UPDATE;
             pxICMPHeader_IPv6->ulReserved = FreeRTOS_htonl( pxICMPHeader_IPv6->ulReserved );
 
             /* Type of option. */
@@ -1237,83 +849,6 @@
             /* Set the parameter 'bReleaseAfterSend'. */
             ( void ) pxInterface->pfOutput( pxInterface, pxNetworkBuffer, pdTRUE );
         }
-    }
-/*-----------------------------------------------------------*/
-
-/**
- * @brief Create an IPv16 address, based on a prefix.
- *
- * @param[out] pxIPAddress The location where the new IPv6 address will be stored.
- * @param[in] pxPrefix The prefix to be used.
- * @param[in] uxPrefixLength The length of the prefix.
- * @param[in] xDoRandom A non-zero value if the bits after the prefix should have a random value.
- *
- * @return pdPASS if the operation was successful. Or pdFAIL in case xApplicationGetRandomNumber()
- *         returned an error.
- */
-    BaseType_t FreeRTOS_CreateIPv6Address( IPv6_Address_t * pxIPAddress,
-                                           const IPv6_Address_t * pxPrefix,
-                                           size_t uxPrefixLength,
-                                           BaseType_t xDoRandom )
-    {
-        uint32_t pulRandom[ 4 ];
-        uint8_t * pucSource;
-        BaseType_t xIndex, xResult = pdPASS;
-
-        if( xDoRandom != pdFALSE )
-        {
-            /* Create an IP-address, based on a net prefix and a
-             * random host address.
-             * ARRAY_SIZE_X() returns the size of an array as a
-             * signed value ( BaseType_t ).
-             */
-            for( xIndex = 0; xIndex < ARRAY_SIZE_X( pulRandom ); xIndex++ )
-            {
-                if( xApplicationGetRandomNumber( &( pulRandom[ xIndex ] ) ) == pdFAIL )
-                {
-                    xResult = pdFAIL;
-                    break;
-                }
-            }
-        }
-        else
-        {
-            ( void ) memset( pulRandom, 0, sizeof( pulRandom ) );
-        }
-
-        if( xResult == pdPASS )
-        {
-            /* A loopback IP-address has a prefix of 128. */
-            configASSERT( ( uxPrefixLength > 0U ) && ( uxPrefixLength <= ( 8U * ipSIZE_OF_IPv6_ADDRESS ) ) );
-
-            if( uxPrefixLength >= 8U )
-            {
-                ( void ) memcpy( pxIPAddress->ucBytes, pxPrefix->ucBytes, ( uxPrefixLength + 7U ) / 8U );
-            }
-
-            pucSource = ( uint8_t * ) pulRandom;
-            size_t uxIndex = uxPrefixLength / 8U;
-
-            if( ( uxPrefixLength % 8U ) != 0U )
-            {
-                /* uxHostLen is between 1 and 7 bits long. */
-                size_t uxHostLen = 8U - ( uxPrefixLength % 8U );
-                uint32_t uxHostMask = ( ( ( uint32_t ) 1U ) << uxHostLen ) - 1U;
-                uint8_t ucNetMask = ( uint8_t ) ~( uxHostMask );
-
-                pxIPAddress->ucBytes[ uxIndex ] &= ucNetMask;
-                pxIPAddress->ucBytes[ uxIndex ] |= ( pucSource[ 0 ] & ( ( uint8_t ) uxHostMask ) );
-                pucSource = &( pucSource[ 1 ] );
-                uxIndex++;
-            }
-
-            if( uxIndex < ipSIZE_OF_IPv6_ADDRESS )
-            {
-                ( void ) memcpy( &( pxIPAddress->ucBytes[ uxIndex ] ), pucSource, ipSIZE_OF_IPv6_ADDRESS - uxIndex );
-            }
-        }
-
-        return xResult;
     }
 /*-----------------------------------------------------------*/
 #endif /* ipconfigUSE_IPv6 */

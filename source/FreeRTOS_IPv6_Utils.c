@@ -39,6 +39,7 @@
 
 /* FreeRTOS+TCP includes. */
 #include "FreeRTOS_IP.h"
+#include "FreeRTOS_ICMP.h"
 
 /*-----------------------------------------------------------*/
 
@@ -138,12 +139,12 @@ BaseType_t prvChecksumICMPv6Checks( size_t uxBufferLength,
 
     switch( pxSet->pxProtocolHeaders->xICMPHeaderIPv6.ucTypeOfMessage )
     {
-        case ipICMP_PING_REQUEST_IPv6:
-        case ipICMP_PING_REPLY_IPv6:
+        case ipICMPv6_PING_REQUEST:
+        case ipICMPv6_PING_REPLY:
             xICMPLength = sizeof( ICMPEcho_IPv6_t );
             break;
 
-        case ipICMP_ROUTER_SOLICITATION_IPv6:
+        case ipICMPv6_ROUTER_SOLICITATION:
             xICMPLength = sizeof( ICMPRouterSolicitation_IPv6_t );
             break;
 
@@ -280,6 +281,83 @@ size_t usGetExtensionHeaderLength( const uint8_t * pucEthernetBuffer,
     }
 
     return uxReturn;
+}
+/*-----------------------------------------------------------*/
+
+/**
+ * @brief Create an IPv16 address, based on a prefix.
+ *
+ * @param[out] pxIPAddress The location where the new IPv6 address will be stored.
+ * @param[in] pxPrefix The prefix to be used.
+ * @param[in] uxPrefixLength The length of the prefix.
+ * @param[in] xDoRandom A non-zero value if the bits after the prefix should have a random value.
+ *
+ * @return pdPASS if the operation was successful. Or pdFAIL in case xApplicationGetRandomNumber()
+ *         returned an error.
+ */
+BaseType_t FreeRTOS_CreateIPv6Address( IPv6_Address_t * pxIPAddress,
+                                       const IPv6_Address_t * pxPrefix,
+                                       size_t uxPrefixLength,
+                                       BaseType_t xDoRandom )
+{
+    uint32_t pulRandom[ 4 ];
+    uint8_t * pucSource;
+    BaseType_t xIndex, xResult = pdPASS;
+
+    if( xDoRandom != pdFALSE )
+    {
+        /* Create an IP-address, based on a net prefix and a
+         * random host address.
+         * ARRAY_SIZE_X() returns the size of an array as a
+         * signed value ( BaseType_t ).
+         */
+        for( xIndex = 0; xIndex < ARRAY_SIZE_X( pulRandom ); xIndex++ )
+        {
+            if( xApplicationGetRandomNumber( &( pulRandom[ xIndex ] ) ) == pdFAIL )
+            {
+                xResult = pdFAIL;
+                break;
+            }
+        }
+    }
+    else
+    {
+        ( void ) memset( pulRandom, 0, sizeof( pulRandom ) );
+    }
+
+    if( xResult == pdPASS )
+    {
+        /* A loopback IP-address has a prefix of 128. */
+        configASSERT( ( uxPrefixLength > 0U ) && ( uxPrefixLength <= ( 8U * ipSIZE_OF_IPv6_ADDRESS ) ) );
+
+        if( uxPrefixLength >= 8U )
+        {
+            ( void ) memcpy( pxIPAddress->ucBytes, pxPrefix->ucBytes, ( uxPrefixLength + 7U ) / 8U );
+        }
+
+        pucSource = ( uint8_t * ) pulRandom;
+        size_t uxIndex = uxPrefixLength / 8U;
+
+        if( ( uxPrefixLength % 8U ) != 0U )
+        {
+            /* uxHostLen is between 1 and 7 bits long. */
+            size_t uxHostLen = 8U - ( uxPrefixLength % 8U );
+            uint32_t uxHostMask = ( ( ( uint32_t ) 1U ) << uxHostLen ) - 1U;
+            uint8_t ucNetMask = ( uint8_t ) ~( uxHostMask );
+
+            pxIPAddress->ucBytes[ uxIndex ] &= ucNetMask;
+            pxIPAddress->ucBytes[ uxIndex ] |= ( pucSource[ 0 ] & ( ( uint8_t ) uxHostMask ) );
+            pucSource = &( pucSource[ 1 ] );
+            uxIndex++;
+        }
+
+        if( uxIndex < ipSIZE_OF_IPv6_ADDRESS )
+        {
+            ( void ) memcpy( &( pxIPAddress->ucBytes[ uxIndex ] ), pucSource, ipSIZE_OF_IPv6_ADDRESS - uxIndex );
+        }
+    }
+
+    return xResult;
 }
 /*-----------------------------------------------------------*/
 

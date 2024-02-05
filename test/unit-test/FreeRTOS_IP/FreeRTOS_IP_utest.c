@@ -60,6 +60,7 @@
 #include "mock_FreeRTOS_DNS_Cache.h"
 #include "mock_FreeRTOS_UDP_IP.h"
 #include "mock_FreeRTOS_ND.h"
+#include "mock_FreeRTOS_ICMP.h"
 #include "mock_FreeRTOS_IPv6.h"
 #include "mock_FreeRTOS_IPv4.h"
 
@@ -2213,7 +2214,7 @@ void test_prvProcessIPPacket_ARPResolutionNotReqd_ICMPRelease( void )
     prvCheckIP4HeaderOptions_ExpectAndReturn( pxNetworkBuffer, eProcessBuffer );
     xCheckRequiresARPResolution_ExpectAndReturn( pxNetworkBuffer, pdFALSE );
     vARPRefreshCacheEntryAge_ExpectAnyArgs();
-    ProcessICMPPacket_ExpectAndReturn( pxNetworkBuffer, eReleaseBuffer );
+    eProcessICMPPacket_ExpectAndReturn( pxNetworkBuffer, eReleaseBuffer );
 
     eResult = prvProcessIPPacket( pxIPPacket, pxNetworkBuffer );
 
@@ -2253,7 +2254,7 @@ void test_prvProcessIPPacket_ARPResolutionNotReqd_ICMPProcess( void )
     prvCheckIP4HeaderOptions_ExpectAndReturn( pxNetworkBuffer, eProcessBuffer );
     xCheckRequiresARPResolution_ExpectAndReturn( pxNetworkBuffer, pdFALSE );
     vARPRefreshCacheEntryAge_ExpectAnyArgs();
-    ProcessICMPPacket_ExpectAndReturn( pxNetworkBuffer, eProcessBuffer );
+    eProcessICMPPacket_ExpectAndReturn( pxNetworkBuffer, eProcessBuffer );
 
     eResult = prvProcessIPPacket( pxIPPacket, pxNetworkBuffer );
 

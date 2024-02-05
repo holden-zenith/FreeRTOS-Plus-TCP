@@ -340,6 +340,8 @@
  * @return A value from enum IPv6_Type_t.
  */
         IPv6_Type_t xIPv6_GetIPType( const IPv6_Address_t * pxAddress );
+
+        NetworkEndPoint_t * pxFindLocalEndpoint_IPv6( void );
     #endif
 
     #ifdef __cplusplus

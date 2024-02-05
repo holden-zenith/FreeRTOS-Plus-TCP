@@ -1483,7 +1483,38 @@ struct xIPv6_Couple
 
         return eResult;
     }
+/*-----------------------------------------------------------*/
+
+/**
+ * @brief Find the first end-point of type IPv6.
+ *
+ * @return The first IPv6 end-point found.
+ */
+    NetworkEndPoint_t * pxFindLocalEndpoint_IPv6( void )
+    {
+        NetworkEndPoint_t * pxEndPoint;
+
+        for( pxEndPoint = FreeRTOS_FirstEndPoint( NULL );
+             pxEndPoint != NULL;
+             pxEndPoint = FreeRTOS_NextEndPoint( NULL, pxEndPoint ) )
+        {
+            if( pxEndPoint->bits.bIPv6 == pdTRUE_UNSIGNED )
+            {
+                IPv6_Type_t eType = xIPv6_GetIPType( &( pxEndPoint->ipv6_settings.xIPAddress ) );
+
+                if( eType == eIPv6_LinkLocal )
+                {
+                    break;
+                }
+            }
+        }
+
+        return pxEndPoint;
+    }
+/*-----------------------------------------------------------*/
+
 #endif /* if ( ipconfigUSE_IPv6 != 0 ) */
+
 /*-----------------------------------------------------------*/
 
 #if ( ( ipconfigHAS_PRINTF != 0 ) || ( ipconfigHAS_DEBUG_PRINTF != 0 ) )

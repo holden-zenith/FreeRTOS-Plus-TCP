@@ -254,11 +254,6 @@ struct xTCP_PACKET_IPv6
 #include "pack_struct_end.h"
 typedef struct xTCP_PACKET_IPv6 TCPPacket_IPv6_t;
 
-/* prvProcessICMPMessage_IPv6() is declared in FreeRTOS_routing.c
- * It handles all ICMP messages except the PING requests. */
-eFrameProcessingResult_t prvProcessICMPMessage_IPv6( NetworkBufferDescriptor_t * const pxNetworkBuffer );
-
-
 #if ( ( ipconfigHAS_DEBUG_PRINTF != 0 ) || ( ipconfigHAS_PRINTF != 0 ) )
 /* prepare a string which describes a socket, just for logging. */
     const char * prvSocketProps( FreeRTOS_Socket_t * pxSocket );

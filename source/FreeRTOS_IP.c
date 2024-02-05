@@ -59,6 +59,7 @@
 #include "FreeRTOS_DNS.h"
 #include "FreeRTOS_Routing.h"
 #include "FreeRTOS_ND.h"
+#include "FreeRTOS_ICMP.h"
 
 /** @brief Time delay between repeated attempts to initialise the network hardware. */
 #ifndef ipINITIALISATION_RETRY_DELAY
@@ -1972,7 +1973,7 @@ static eFrameProcessingResult_t prvProcessIPPacket( const IPPacket_t * pxIPPacke
                              * receives. */
                             #if ( ipconfigREPLY_TO_INCOMING_PINGS == 1 ) || ( ipconfigSUPPORT_OUTGOING_PINGS == 1 )
                             {
-                                eReturn = ProcessICMPPacket( pxNetworkBuffer );
+                                eReturn = eProcessICMPPacket( pxNetworkBuffer );
                             }
                             #endif /* ( ipconfigREPLY_TO_INCOMING_PINGS == 1 ) || ( ipconfigSUPPORT_OUTGOING_PINGS == 1 ) */
                             break;
@@ -1980,7 +1981,7 @@ static eFrameProcessingResult_t prvProcessIPPacket( const IPPacket_t * pxIPPacke
 
                     #if ( ipconfigUSE_IPv6 != 0 )
                         case ipPROTOCOL_ICMP_IPv6:
-                            eReturn = prvProcessICMPMessage_IPv6( pxNetworkBuffer );
+                            eReturn = eProcessICMPv6Packet( pxNetworkBuffer );
                             break;
                     #endif /* ( ipconfigUSE_IPv6 != 0 ) */
 

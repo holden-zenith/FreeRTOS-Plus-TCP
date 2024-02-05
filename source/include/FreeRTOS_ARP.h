@@ -188,6 +188,8 @@ void FreeRTOS_OutputARPRequest( uint32_t ulIPAddress );
 /* Clear all entries in the ARp cache. */
 void FreeRTOS_ClearARP( const struct xNetworkEndPoint * pxEndPoint );
 
+void prvCheckArpWaitingBuffer( const IPv46_Address_t * const pxIPv6Address );
+
 /* *INDENT-OFF* */
 #ifdef __cplusplus
     } /* extern "C" */

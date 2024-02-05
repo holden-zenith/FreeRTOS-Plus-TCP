@@ -65,7 +65,14 @@
 
 #include "FreeRTOSIPConfig.h"
 
-void test_ProcessICMPPacket_CatchAssert( void )
+/* Setting IPv6 address as "fe80::7009" */
+static const IPv6_Address_t xDefaultIPAddress =
+{
+    0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x09
+};
+
+void test_eProcessICMPPacket_CatchAssert( void )
 {
     eFrameProcessingResult_t eResult;
     NetworkBufferDescriptor_t * pxNetworkBuffer, xNetworkBuffer;
@@ -73,10 +80,10 @@ void test_ProcessICMPPacket_CatchAssert( void )
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->xDataLength = sizeof( ICMPPacket_t ) - 1;
 
-    catch_assert( ProcessICMPPacket( pxNetworkBuffer ) );
+    catch_assert( eProcessICMPPacket( pxNetworkBuffer ) );
 }
 
-void test_ProcessICMPPacket_AllZeroData( void )
+void test_eProcessICMPPacket_AllZeroData( void )
 {
     eFrameProcessingResult_t eResult;
     NetworkBufferDescriptor_t * pxNetworkBuffer, xNetworkBuffer;
@@ -90,12 +97,12 @@ void test_ProcessICMPPacket_AllZeroData( void )
 
     vApplicationPingReplyHook_Expect( eInvalidData, 0 );
 
-    eResult = ProcessICMPPacket( pxNetworkBuffer );
+    eResult = eProcessICMPPacket( pxNetworkBuffer );
 
     TEST_ASSERT_EQUAL( eReleaseBuffer, eResult );
 }
 
-void test_ProcessICMPPacket_EchoRequest( void )
+void test_eProcessICMPPacket_EchoRequest( void )
 {
     eFrameProcessingResult_t eResult;
     NetworkBufferDescriptor_t * pxNetworkBuffer, xNetworkBuffer;
@@ -122,7 +129,7 @@ void test_ProcessICMPPacket_EchoRequest( void )
 
     usGenerateProtocolChecksum_ExpectAnyArgsAndReturn( 0 );
 
-    eResult = ProcessICMPPacket( pxNetworkBuffer );
+    eResult = eProcessICMPPacket( pxNetworkBuffer );
 
     TEST_ASSERT_EQUAL( eReturnEthernetFrame, eResult );
     TEST_ASSERT_EQUAL( ( uint8_t ) ipICMP_ECHO_REPLY, pxICMPHeader->ucTypeOfMessage );
@@ -133,7 +140,7 @@ void test_ProcessICMPPacket_EchoRequest( void )
     TEST_ASSERT_EQUAL( ( uint16_t ) ~FreeRTOS_htons( 0xAA ), pxIPHeader->usHeaderChecksum );
 }
 
-void test_ProcessICMPPacket_UnknownICMPPacket( void )
+void test_eProcessICMPPacket_UnknownICMPPacket( void )
 {
     eFrameProcessingResult_t eResult;
     NetworkBufferDescriptor_t * pxNetworkBuffer, xNetworkBuffer;
@@ -151,12 +158,12 @@ void test_ProcessICMPPacket_UnknownICMPPacket( void )
     /* Unknown ICMP Packet. */
     pxICMPPacket->xICMPHeader.ucTypeOfMessage = ipICMP_ECHO_REQUEST + 2;
 
-    eResult = ProcessICMPPacket( pxNetworkBuffer );
+    eResult = eProcessICMPPacket( pxNetworkBuffer );
 
     TEST_ASSERT_EQUAL( eReleaseBuffer, eResult );
 }
 
-void test_ProcessICMPPacket_ICMPEchoReply_NULLData( void )
+void test_eProcessICMPPacket_ICMPEchoReply_NULLData( void )
 {
     eFrameProcessingResult_t eResult;
     NetworkBufferDescriptor_t * pxNetworkBuffer, xNetworkBuffer;
@@ -178,12 +185,12 @@ void test_ProcessICMPPacket_ICMPEchoReply_NULLData( void )
 
     vApplicationPingReplyHook_Expect( eSuccess, 0 );
 
-    eResult = ProcessICMPPacket( pxNetworkBuffer );
+    eResult = eProcessICMPPacket( pxNetworkBuffer );
 
     TEST_ASSERT_EQUAL( eReleaseBuffer, eResult );
 }
 
-void test_ProcessICMPPacket_ICMPEchoReply_ProperData( void )
+void test_eProcessICMPPacket_ICMPEchoReply_ProperData( void )
 {
     eFrameProcessingResult_t eResult;
     NetworkBufferDescriptor_t * pxNetworkBuffer, xNetworkBuffer;
@@ -210,12 +217,12 @@ void test_ProcessICMPPacket_ICMPEchoReply_ProperData( void )
 
     vApplicationPingReplyHook_Expect( eSuccess, 0 );
 
-    eResult = ProcessICMPPacket( pxNetworkBuffer );
+    eResult = eProcessICMPPacket( pxNetworkBuffer );
 
     TEST_ASSERT_EQUAL( eReleaseBuffer, eResult );
 }
 
-void test_ProcessICMPPacket_ICMPEchoReply_ImproperData( void )
+void test_eProcessICMPPacket_ICMPEchoReply_ImproperData( void )
 {
     eFrameProcessingResult_t eResult;
     NetworkBufferDescriptor_t * pxNetworkBuffer, xNetworkBuffer;
@@ -242,7 +249,7 @@ void test_ProcessICMPPacket_ICMPEchoReply_ImproperData( void )
 
     vApplicationPingReplyHook_Expect( eInvalidData, 0 );
 
-    eResult = ProcessICMPPacket( pxNetworkBuffer );
+    eResult = eProcessICMPPacket( pxNetworkBuffer );
 
     TEST_ASSERT_EQUAL( eSuccess, eResult );
 }
@@ -252,4 +259,187 @@ void test_CastingFunctions( void )
     void * pvTemp;
 
     const ICMPHeader_t * pxICMPHeader = ( ( const ICMPHeader_t * ) pvTemp );
+}
+
+/**
+ * @brief This function process ICMP message when message type is
+ *        ipICMP_NEIGHBOR_ADVERTISEMENT_IPv6.
+ *        It handles case when pxARPWaitingNetworkBuffer is NULL.
+ */
+void test_eProcessICMPv6Packet_NeighborAdvertisement1( void )
+{
+    NetworkBufferDescriptor_t xNetworkBuffer, * pxNetworkBuffer = &xNetworkBuffer;
+    ICMPPacket_IPv6_t xICMPPacket;
+    ICMPHeader_IPv6_t * pxICMPHeader_IPv6 = ( ( ICMPHeader_IPv6_t * ) &( xICMPPacket.xICMPHeaderIPv6 ) );
+    NetworkEndPoint_t xEndPoint;
+    eFrameProcessingResult_t eReturn;
+
+    xEndPoint.bits.bIPv6 = pdTRUE_UNSIGNED;
+    pxNetworkBuffer->pucEthernetBuffer = ( uint8_t * ) &xICMPPacket;
+    pxNetworkBuffer->pxEndPoint = &xEndPoint;
+    xICMPPacket.xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_NEIGHBOR_ADVERTISEMENT;
+    pxARPWaitingNetworkBuffer = NULL;
+
+
+    eReturn = eProcessICMPv6Packet( pxNetworkBuffer );
+
+    TEST_ASSERT_EQUAL( eReturn, eReleaseBuffer );
+}
+
+/**
+ * @brief This function process ICMP message when message type is
+ *        ipICMPv6_NEIGHBOR_ADVERTISEMENT.
+ *        It handles case header is of ipSIZE_OF_IPv4_HEADER type.
+ */
+void test_eProcessICMPv6Packet_NeighborAdvertisement2( void )
+{
+    NetworkBufferDescriptor_t xNetworkBuffer, * pxNetworkBuffer = &xNetworkBuffer;
+    ICMPPacket_IPv6_t xICMPPacket;
+    ICMPHeader_IPv6_t * pxICMPHeader_IPv6 = ( ( ICMPHeader_IPv6_t * ) &( xICMPPacket.xICMPHeaderIPv6 ) );
+    NetworkEndPoint_t xEndPoint;
+    eFrameProcessingResult_t eReturn;
+    NetworkBufferDescriptor_t xARPWaitingNetworkBuffer;
+
+    xEndPoint.bits.bIPv6 = pdTRUE_UNSIGNED;
+    pxNetworkBuffer->pucEthernetBuffer = ( uint8_t * ) &xICMPPacket;
+    pxNetworkBuffer->pxEndPoint = &xEndPoint;
+    xICMPPacket.xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_NEIGHBOR_ADVERTISEMENT;
+
+    pxARPWaitingNetworkBuffer = &xARPWaitingNetworkBuffer;
+    uxIPHeaderSizePacket_IgnoreAndReturn( ipSIZE_OF_IPv4_HEADER );
+
+    eReturn = eProcessICMPv6Packet( pxNetworkBuffer );
+
+    TEST_ASSERT_EQUAL( eReturn, eReleaseBuffer );
+}
+
+/**
+ * @brief This function process ICMP message when message type is
+ *        ipICMPv6_NEIGHBOR_ADVERTISEMENT.
+ *        This verifies a case 'pxARPWaitingNetworkBuffer' was
+ *        not waiting for this new address look-up.
+ */
+void test_eProcessICMPv6Packet_NeighborAdvertisement3( void )
+{
+    NetworkBufferDescriptor_t xNetworkBuffer, * pxNetworkBuffer = &xNetworkBuffer;
+    ICMPPacket_IPv6_t xICMPPacket;
+    ICMPHeader_IPv6_t * pxICMPHeader_IPv6 = ( ( ICMPHeader_IPv6_t * ) &( xICMPPacket.xICMPHeaderIPv6 ) );
+    NetworkEndPoint_t xEndPoint;
+    eFrameProcessingResult_t eReturn;
+    NetworkBufferDescriptor_t xARPWaitingNetworkBuffer;
+    IPPacket_IPv6_t xIPPacket;
+    IPHeader_IPv6_t * pxIPHeader = &( xIPPacket.xIPHeader );
+
+    pxARPWaitingNetworkBuffer = &xARPWaitingNetworkBuffer;
+    pxARPWaitingNetworkBuffer->pucEthernetBuffer = ( uint8_t * ) &xIPPacket;
+    xEndPoint.bits.bIPv6 = pdTRUE_UNSIGNED;
+    pxNetworkBuffer->pucEthernetBuffer = ( uint8_t * ) &xICMPPacket;
+    pxNetworkBuffer->pxEndPoint = &xEndPoint;
+    ( void ) memcpy( pxICMPHeader_IPv6->xIPv6Address.ucBytes, xDefaultIPAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS );
+    xICMPPacket.xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_NEIGHBOR_ADVERTISEMENT;
+
+    uxIPHeaderSizePacket_IgnoreAndReturn( ipSIZE_OF_IPv6_HEADER );
+
+    eReturn = eProcessICMPv6Packet( pxNetworkBuffer );
+
+    TEST_ASSERT_EQUAL( eReturn, eReleaseBuffer );
+}
+
+/**
+ * @brief This function process ICMP message when message type is
+ *        ipICMPv6_NEIGHBOR_ADVERTISEMENT_IPv6.
+ *        This verifies a case where a packet is handled as a new
+ *        incoming IP packet when a neighbour advertisement has been received,
+ *        and 'pxARPWaitingNetworkBuffer' was waiting for this new address look-up.
+ */
+void test_eProcessICMPv6Packet_NeighborAdvertisement4( void )
+{
+    NetworkBufferDescriptor_t xNetworkBuffer, * pxNetworkBuffer = &xNetworkBuffer;
+    ICMPPacket_IPv6_t xICMPPacket;
+    ICMPHeader_IPv6_t * pxICMPHeader_IPv6 = ( ( ICMPHeader_IPv6_t * ) &( xICMPPacket.xICMPHeaderIPv6 ) );
+    NetworkEndPoint_t xEndPoint;
+    eFrameProcessingResult_t eReturn;
+    NetworkBufferDescriptor_t xARPWaitingNetworkBuffer;
+    IPPacket_IPv6_t xIPPacket;
+    IPHeader_IPv6_t * pxIPHeader = &( xIPPacket.xIPHeader );
+
+    pxARPWaitingNetworkBuffer = &xARPWaitingNetworkBuffer;
+    pxARPWaitingNetworkBuffer->pucEthernetBuffer = ( uint8_t * ) &xIPPacket;
+
+    xEndPoint.bits.bIPv6 = pdTRUE_UNSIGNED;
+    pxNetworkBuffer->pucEthernetBuffer = ( uint8_t * ) &xICMPPacket;
+    pxNetworkBuffer->pxEndPoint = &xEndPoint;
+    xICMPPacket.xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_NEIGHBOR_ADVERTISEMENT;
+    ( void ) memcpy( pxICMPHeader_IPv6->xIPv6Address.ucBytes, xDefaultIPAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS );
+    ( void ) memcpy( pxIPHeader->xSourceAddress.ucBytes, xDefaultIPAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS );
+
+
+    uxIPHeaderSizePacket_IgnoreAndReturn( ipSIZE_OF_IPv6_HEADER );
+    xSendEventStructToIPTask_IgnoreAndReturn( pdFAIL );
+    vReleaseNetworkBufferAndDescriptor_Ignore();
+    vIPSetARPResolutionTimerEnableState_ExpectAnyArgs();
+
+    eReturn = eProcessICMPv6Packet( pxNetworkBuffer );
+
+    TEST_ASSERT_EQUAL( eReturn, eReleaseBuffer );
+    TEST_ASSERT_EQUAL( pxARPWaitingNetworkBuffer, NULL );
+}
+
+/**
+ * @brief This function process ICMP message when message type is
+ *        ipICMPv6_NEIGHBOR_ADVERTISEMENT.
+ *        This verifies a case where a packet is handled as a new
+ *        incoming IP packet when a neighbour advertisement has been received,
+ *        and 'pxARPWaitingNetworkBuffer' was waiting for this new address look-up.
+ */
+void test_eProcessICMPv6Packet_NeighborAdvertisement5( void )
+{
+    NetworkBufferDescriptor_t xNetworkBuffer, * pxNetworkBuffer = &xNetworkBuffer;
+    ICMPPacket_IPv6_t xICMPPacket;
+    ICMPHeader_IPv6_t * pxICMPHeader_IPv6 = ( ( ICMPHeader_IPv6_t * ) &( xICMPPacket.xICMPHeaderIPv6 ) );
+    NetworkEndPoint_t xEndPoint;
+    eFrameProcessingResult_t eReturn;
+    NetworkBufferDescriptor_t xARPWaitingNetworkBuffer;
+    IPPacket_IPv6_t xIPPacket;
+    IPHeader_IPv6_t * pxIPHeader = &( xIPPacket.xIPHeader );
+
+    pxARPWaitingNetworkBuffer = &xARPWaitingNetworkBuffer;
+    pxARPWaitingNetworkBuffer->pucEthernetBuffer = ( uint8_t * ) &xIPPacket;
+
+    xEndPoint.bits.bIPv6 = pdTRUE_UNSIGNED;
+    pxNetworkBuffer->pucEthernetBuffer = ( uint8_t * ) &xICMPPacket;
+    pxNetworkBuffer->pxEndPoint = &xEndPoint;
+    xICMPPacket.xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_NEIGHBOR_ADVERTISEMENT;
+    ( void ) memcpy( pxICMPHeader_IPv6->xIPv6Address.ucBytes, xDefaultIPAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS );
+    ( void ) memcpy( pxIPHeader->xSourceAddress.ucBytes, xDefaultIPAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS );
+
+
+    uxIPHeaderSizePacket_IgnoreAndReturn( ipSIZE_OF_IPv6_HEADER );
+    xSendEventStructToIPTask_IgnoreAndReturn( pdPASS );
+    vIPSetARPResolutionTimerEnableState_ExpectAnyArgs();
+
+    eReturn = eProcessICMPv6Packet( pxNetworkBuffer );
+
+    TEST_ASSERT_EQUAL( eReturn, eReleaseBuffer );
+    TEST_ASSERT_EQUAL( pxARPWaitingNetworkBuffer, NULL );
+}
+
+/**
+ * @brief This function process ICMP message when message type is incorrect.
+ */
+void test_eProcessICMPv6Packet_Default( void )
+{
+    NetworkBufferDescriptor_t xNetworkBuffer, * pxNetworkBuffer = &xNetworkBuffer;
+    ICMPPacket_IPv6_t xICMPPacket;
+    NetworkEndPoint_t xEndPoint;
+    eFrameProcessingResult_t eReturn;
+
+    xEndPoint.bits.bIPv6 = pdTRUE_UNSIGNED;
+    xICMPPacket.xICMPHeaderIPv6.ucTypeOfMessage = 0;
+    pxNetworkBuffer->pxEndPoint = &xEndPoint;
+    pxNetworkBuffer->pucEthernetBuffer = ( uint8_t * ) &xICMPPacket;
+
+    eReturn = eProcessICMPv6Packet( pxNetworkBuffer );
+
+    TEST_ASSERT_EQUAL( eReturn, eReleaseBuffer );
 }

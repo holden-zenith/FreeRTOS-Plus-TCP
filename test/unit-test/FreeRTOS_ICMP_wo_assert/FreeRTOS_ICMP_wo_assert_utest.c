@@ -58,7 +58,7 @@
 
 #include "FreeRTOSIPConfig.h"
 
-void test_ProcessICMPPacket_PacketSizeSmall( void )
+void test_eProcessICMPPacket_PacketSizeSmall( void )
 {
     eFrameProcessingResult_t eResult;
     NetworkBufferDescriptor_t * pxNetworkBuffer, xNetworkBuffer;
@@ -66,7 +66,7 @@ void test_ProcessICMPPacket_PacketSizeSmall( void )
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->xDataLength = sizeof( ICMPPacket_t ) - 1;
 
-    eResult = ProcessICMPPacket( pxNetworkBuffer );
+    eResult = eProcessICMPPacket( pxNetworkBuffer );
 
     TEST_ASSERT_EQUAL( eReleaseBuffer, eResult );
 }

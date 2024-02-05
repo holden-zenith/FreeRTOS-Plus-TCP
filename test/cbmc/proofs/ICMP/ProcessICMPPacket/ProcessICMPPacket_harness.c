@@ -66,5 +66,5 @@ void harness()
     xNetworkBuffer.xDataLength = sizeof( ICMPPacket_t );
     xNetworkBuffer.pucEthernetBuffer = pxICMPPacket;
 
-    ProcessICMPPacket( &xNetworkBuffer );
+    eProcessICMPPacket( &xNetworkBuffer );
 }

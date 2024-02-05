@@ -19,6 +19,7 @@ list(APPEND mock_list
             "${CMAKE_BINARY_DIR}/Annexed_TCP/FreeRTOS_IPv4.h"
             "${CMAKE_BINARY_DIR}/Annexed_TCP/FreeRTOS_IPv6.h"
             "${CMAKE_BINARY_DIR}/Annexed_TCP/FreeRTOS_ND.h"
+            "${CMAKE_BINARY_DIR}/Annexed_TCP/FreeRTOS_ICMP.h"
             "${CMAKE_BINARY_DIR}/Annexed_TCP/FreeRTOS_Routing.h"
             "${CMAKE_BINARY_DIR}/Annexed_TCP/FreeRTOS_IPv4_Private.h"
             "${CMAKE_BINARY_DIR}/Annexed_TCP/FreeRTOS_IP_Timers.h"

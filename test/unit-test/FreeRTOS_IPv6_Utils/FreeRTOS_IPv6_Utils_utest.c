@@ -44,6 +44,7 @@
 
 #include "mock_FreeRTOS_IP.h"
 #include "mock_FreeRTOS_IPv6.h"
+#include "mock_FreeRTOS_ICMP.h"
 
 #include "FreeRTOS_IPv6_Utils.h"
 
@@ -286,7 +287,7 @@ void test_prvChecksumICMPv6Checks_Default_ValidLength( void )
 
 /**
  * @brief This function verify sending an invalid length
- *        for ipICMP_PING_REQUEST_IPv6.
+ *        for ipICMPv6_PING_REQUEST.
  */
 void test_prvChecksumICMPv6Checks_PingReq_InvalidLength( void )
 {
@@ -297,7 +298,7 @@ void test_prvChecksumICMPv6Checks_PingReq_InvalidLength( void )
     ProtocolHeaders_t xProtocolHeaders;
 
     memset( &xSet, 0, sizeof( struct xPacketSummary ) );
-    xICMPHeaderIPv6.ucTypeOfMessage = ipICMP_PING_REQUEST_IPv6;
+    xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_PING_REQUEST;
     xProtocolHeaders.xICMPHeaderIPv6 = xICMPHeaderIPv6;
     xSet.uxIPHeaderLength = ipSIZE_OF_IPv6_HEADER;
     xSet.pxProtocolHeaders = &xProtocolHeaders;
@@ -310,7 +311,7 @@ void test_prvChecksumICMPv6Checks_PingReq_InvalidLength( void )
 
 /**
  * @brief This function verify sending an valid length
- *        for ipICMP_PING_REQUEST_IPv6.
+ *        for ipICMPv6_PING_REQUEST.
  */
 void test_prvChecksumICMPv6Checks_PingReq_ValidLength( void )
 {
@@ -321,7 +322,7 @@ void test_prvChecksumICMPv6Checks_PingReq_ValidLength( void )
     ProtocolHeaders_t xProtocolHeaders;
 
     memset( &xSet, 0, sizeof( struct xPacketSummary ) );
-    xICMPHeaderIPv6.ucTypeOfMessage = ipICMP_PING_REQUEST_IPv6;
+    xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_PING_REQUEST;
     xProtocolHeaders.xICMPHeaderIPv6 = xICMPHeaderIPv6;
     xSet.uxIPHeaderLength = ipSIZE_OF_IPv6_HEADER;
     xSet.pxProtocolHeaders = &xProtocolHeaders;
@@ -334,7 +335,7 @@ void test_prvChecksumICMPv6Checks_PingReq_ValidLength( void )
 
 /**
  * @brief This function verify sending an invalid length
- *        for ipICMP_PING_REPLY_IPv6.
+ *        for ipICMPv6_PING_REPLY.
  */
 void test_prvChecksumICMPv6Checks_PingReply_InvalidLength( void )
 {
@@ -345,7 +346,7 @@ void test_prvChecksumICMPv6Checks_PingReply_InvalidLength( void )
     ProtocolHeaders_t xProtocolHeaders;
 
     memset( &xSet, 0, sizeof( struct xPacketSummary ) );
-    xICMPHeaderIPv6.ucTypeOfMessage = ipICMP_PING_REPLY_IPv6;
+    xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_PING_REPLY;
     xProtocolHeaders.xICMPHeaderIPv6 = xICMPHeaderIPv6;
     xSet.uxIPHeaderLength = ipSIZE_OF_IPv6_HEADER;
     xSet.pxProtocolHeaders = &xProtocolHeaders;
@@ -358,7 +359,7 @@ void test_prvChecksumICMPv6Checks_PingReply_InvalidLength( void )
 
 /**
  * @brief This function verify sending an valid length
- *        for ipICMP_PING_REPLY_IPv6.
+ *        for ipICMPv6_PING_REPLY.
  */
 void test_prvChecksumICMPv6Checks_PingReply_ValidLength( void )
 {
@@ -369,7 +370,7 @@ void test_prvChecksumICMPv6Checks_PingReply_ValidLength( void )
     ProtocolHeaders_t xProtocolHeaders;
 
     memset( &xSet, 0, sizeof( struct xPacketSummary ) );
-    xICMPHeaderIPv6.ucTypeOfMessage = ipICMP_PING_REPLY_IPv6;
+    xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_PING_REPLY;
     xProtocolHeaders.xICMPHeaderIPv6 = xICMPHeaderIPv6;
     xSet.uxIPHeaderLength = ipSIZE_OF_IPv6_HEADER;
     xSet.pxProtocolHeaders = &xProtocolHeaders;
@@ -382,7 +383,7 @@ void test_prvChecksumICMPv6Checks_PingReply_ValidLength( void )
 
 /**
  * @brief This function verify sending an invalid length
- *        for ipICMP_ROUTER_SOLICITATION_IPv6.
+ *        for ipICMPv6_ROUTER_SOLICITATION.
  */
 void test_prvChecksumICMPv6Checks_RS_InvalidLength( void )
 {
@@ -393,7 +394,7 @@ void test_prvChecksumICMPv6Checks_RS_InvalidLength( void )
     ProtocolHeaders_t xProtocolHeaders;
 
     memset( &xSet, 0, sizeof( struct xPacketSummary ) );
-    xICMPHeaderIPv6.ucTypeOfMessage = ipICMP_ROUTER_SOLICITATION_IPv6;
+    xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_ROUTER_SOLICITATION;
     xProtocolHeaders.xICMPHeaderIPv6 = xICMPHeaderIPv6;
     xSet.uxIPHeaderLength = ipSIZE_OF_IPv6_HEADER;
     xSet.pxProtocolHeaders = &xProtocolHeaders;
@@ -406,7 +407,7 @@ void test_prvChecksumICMPv6Checks_RS_InvalidLength( void )
 
 /**
  * @brief This function verify sending an valid length
- *        for ipICMP_ROUTER_SOLICITATION_IPv6.
+ *        for ipICMPv6_ROUTER_SOLICITATION_IPv6.
  */
 void test_prvChecksumICMPv6Checks_RS_ValidLength( void )
 {
@@ -417,7 +418,7 @@ void test_prvChecksumICMPv6Checks_RS_ValidLength( void )
     ProtocolHeaders_t xProtocolHeaders;
 
     memset( &xSet, 0, sizeof( struct xPacketSummary ) );
-    xICMPHeaderIPv6.ucTypeOfMessage = ipICMP_ROUTER_SOLICITATION_IPv6;
+    xICMPHeaderIPv6.ucTypeOfMessage = ipICMPv6_ROUTER_SOLICITATION;
     xProtocolHeaders.xICMPHeaderIPv6 = xICMPHeaderIPv6;
     xSet.uxIPHeaderLength = ipSIZE_OF_IPv6_HEADER;
     xSet.pxProtocolHeaders = &xProtocolHeaders;

@@ -1,5 +1,5 @@
 {
-  "ENTRY": "ProcessICMPPacket",
+  "ENTRY": "eProcessICMPPacket",
   "CBMCFLAGS": [
   	"--unwind 1",
   	"--nondet-static"

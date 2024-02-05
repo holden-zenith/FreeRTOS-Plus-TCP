@@ -40,6 +40,7 @@
 
 /* FreeRTOS+TCP includes. */
 #include "FreeRTOS_IP.h"
+#include "FreeRTOS_ICMP.h"
 
 /* *INDENT-OFF* */
 #if( ipconfigUSE_IPv6 != 0 )
@@ -182,16 +183,16 @@ const struct xIPv6_Address FreeRTOS_in6addr_loopback = { { 0U, 0U, 0U, 0U, 0U, 0
 
                 ucTypeOfMessage = pucEthernetBuffer[ uxMinimumLength ];
 
-                if( ( ucTypeOfMessage == ipICMP_PING_REQUEST_IPv6 ) ||
-                    ( ucTypeOfMessage == ipICMP_PING_REPLY_IPv6 ) )
+                if( ( ucTypeOfMessage == ipICMPv6_PING_REQUEST ) ||
+                    ( ucTypeOfMessage == ipICMPv6_PING_REPLY ) )
                 {
                     uxMinimumLength += sizeof( ICMPEcho_IPv6_t );
                 }
-                else if( ucTypeOfMessage == ipICMP_ROUTER_SOLICITATION_IPv6 )
+                else if( ucTypeOfMessage == ipICMPv6_ROUTER_SOLICITATION )
                 {
                     uxMinimumLength += sizeof( ICMPRouterSolicitation_IPv6_t );
                 }
-                else if( ucTypeOfMessage == ipICMP_ROUTER_ADVERTISEMENT_IPv6 )
+                else if( ucTypeOfMessage == ipICMPv6_ROUTER_ADVERTISEMENT )
                 {
                     uxMinimumLength += sizeof( ICMPRouterAdvertisement_IPv6_t );
                 }
