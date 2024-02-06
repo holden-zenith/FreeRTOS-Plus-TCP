@@ -3,7 +3,6 @@ set( headerList
      FreeRTOS_DNS
      FreeRTOS_IP
      FreeRTOS_ND
-     FreeRTOS_ICMP
      FreeRTOS_Routing
      FreeRTOS_Sockets
      NetworkBufferManagement

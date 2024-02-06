@@ -64,11 +64,15 @@
 #define ipICMPv6_FLAG_SOLICITED                       0x40000000U
 #define ipICMPv6_FLAG_UPDATE                          0x20000000U
 
-/** @brief Process incoming ICMP packets. */
-eFrameProcessingResult_t eProcessICMPPacket( const struct xNETWORK_BUFFER * const pxNetworkBuffer );
+#if ( ipconfigUSE_IPV4 != 0 )
+    /** @brief Process incoming ICMP packets. */
+    eFrameProcessingResult_t eProcessICMPPacket( const struct xNETWORK_BUFFER * const pxNetworkBuffer );
+#endif
 
-/** @brief Process incoming ICMPv6 packets. */
-eFrameProcessingResult_t eProcessICMPv6Packet( struct xNETWORK_BUFFER * const pxNetworkBuffer );
+#if ( ipconfigUSE_IPV6 != 0 )
+    /** @brief Process incoming ICMPv6 packets. */
+    eFrameProcessingResult_t eProcessICMPv6Packet( struct xNETWORK_BUFFER * const pxNetworkBuffer );
+#endif
 
 /* *INDENT-OFF* */
 #ifdef __cplusplus

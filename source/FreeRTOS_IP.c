@@ -43,11 +43,11 @@
 
 /* FreeRTOS+TCP includes. */
 #include "FreeRTOS_IP.h"
-#include "FreeRTOS_ICMP.h"
 #include "FreeRTOS_IP_Timers.h"
 #include "FreeRTOS_IP_Utils.h"
 #include "FreeRTOS_Sockets.h"
 #include "FreeRTOS_IP_Private.h"
+#include "FreeRTOS_ICMP.h"
 #include "FreeRTOS_ARP.h"
 #include "FreeRTOS_UDP_IP.h"
 #include "FreeRTOS_DHCP.h"
@@ -59,7 +59,6 @@
 #include "FreeRTOS_DNS.h"
 #include "FreeRTOS_Routing.h"
 #include "FreeRTOS_ND.h"
-#include "FreeRTOS_ICMP.h"
 
 /** @brief Time delay between repeated attempts to initialise the network hardware. */
 #ifndef ipINITIALISATION_RETRY_DELAY
@@ -1971,11 +1970,7 @@ static eFrameProcessingResult_t prvProcessIPPacket( const IPPacket_t * pxIPPacke
                              * also be returned, and the source of the ping will know something
                              * went wrong because it will not be able to validate what it
                              * receives. */
-                            #if ( ipconfigREPLY_TO_INCOMING_PINGS == 1 ) || ( ipconfigSUPPORT_OUTGOING_PINGS == 1 )
-                            {
-                                eReturn = eProcessICMPPacket( pxNetworkBuffer );
-                            }
-                            #endif /* ( ipconfigREPLY_TO_INCOMING_PINGS == 1 ) || ( ipconfigSUPPORT_OUTGOING_PINGS == 1 ) */
+                            eReturn = eProcessICMPPacket( pxNetworkBuffer );
                             break;
                     #endif /* ( ipconfigUSE_IPv4 != 0 ) */
 

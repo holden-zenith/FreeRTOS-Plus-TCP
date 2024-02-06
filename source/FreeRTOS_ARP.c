@@ -438,38 +438,10 @@ _static ARPCacheRow_t xARPCache[ ipconfigARP_CACHE_ENTRIES ];
             vARPRefreshCacheEntry( &( pxARPHeader->xSenderHardwareAddress ), ulSenderProtocolAddress, pxTargetEndPoint );
         }
 
-        if( ( pxARPWaitingNetworkBuffer != NULL ) &&
-            ( uxIPHeaderSizePacket( pxARPWaitingNetworkBuffer ) == ipSIZE_OF_IPv4_HEADER ) )
-        {
-            /* MISRA Ref 11.3.1 [Misaligned access] */
-/* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-113 */
-            /* coverity[misra_c_2012_rule_11_3_violation] */
-            const IPPacket_t * pxARPWaitingIPPacket = ( ( IPPacket_t * ) pxARPWaitingNetworkBuffer->pucEthernetBuffer );
-            const IPHeader_t * pxARPWaitingIPHeader = &( pxARPWaitingIPPacket->xIPHeader );
-
-            if( ulSenderProtocolAddress == pxARPWaitingIPHeader->ulSourceIPAddress )
-            {
-                IPStackEvent_t xEventMessage;
-                const TickType_t xDontBlock = ( TickType_t ) 0;
-
-                xEventMessage.eEventType = eNetworkRxEvent;
-                xEventMessage.pvData = ( void * ) pxARPWaitingNetworkBuffer;
-
-                if( xSendEventStructToIPTask( &xEventMessage, xDontBlock ) != pdPASS )
-                {
-                    /* Failed to send the message, so release the network buffer. */
-                    vReleaseNetworkBufferAndDescriptor( pxARPWaitingNetworkBuffer );
-                }
-
-                /* Clear the buffer. */
-                pxARPWaitingNetworkBuffer = NULL;
-
-                /* Found an ARP resolution, disable ARP resolution timer. */
-                vIPSetARPResolutionTimerEnableState( pdFALSE );
-
-                iptrace_DELAYED_ARP_REQUEST_REPLIED();
-            }
-        }
+        IPv46_Address_t xIPv4Address;
+        xIPv4Address.xIPAddress.ulIP_IPv4 = ulSenderProtocolAddress;
+        xIPv4Address.xIs_IPv6 = pdFALSE;
+        vCheckArpWaitingBuffer( &xIPv4Address );
     }
 /*-----------------------------------------------------------*/
 
@@ -1599,29 +1571,38 @@ void FreeRTOS_ClearARP( const struct xNetworkEndPoint * pxEndPoint )
  * @brief Check if 'pxARPWaitingNetworkBuffer' was waiting for this new address look-up.
  *        If so, feed it to the IP-task as a new incoming packet.
  */
-void prvCheckArpWaitingBuffer( const IPv46_Address_t * const pxIPAddress )
+void vCheckArpWaitingBuffer( const IPv46_Address_t * const pxIPAddress )
 {
     BaseType_t xResult = pdFALSE;
 
-    if( pxIPAddress->xIs_IPv6 == pdTRUE )
+    if( pxARPWaitingNetworkBuffer != NULL )
     {
-        /* MISRA Ref 11.3.1 [Misaligned access] */
-        /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-113 */
-        /* coverity[misra_c_2012_rule_11_3_violation] */
-        const IPPacket_IPv6_t * pxIPPacket = ( ( const IPPacket_IPv6_t * ) pxARPWaitingNetworkBuffer->pucEthernetBuffer );
-        const IPHeader_IPv6_t * pxIPHeader = &( pxIPPacket->xIPHeader );
-        if( memcmp( pxIPAddress->xIPAddress.xIP_IPv6.ucBytes, pxIPHeader->xSourceAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS ) == 0 )
+        if( pxIPAddress->xIs_IPv6 == pdTRUE )
         {
-            xResult = pdTRUE;
+            if( uxIPHeaderSizePacket( pxARPWaitingNetworkBuffer ) == ipSIZE_OF_IPv6_HEADER )
+            {
+                /* MISRA Ref 11.3.1 [Misaligned access] */
+                /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-113 */
+                /* coverity[misra_c_2012_rule_11_3_violation] */
+                const IPPacket_IPv6_t * pxIPPacket = ( ( const IPPacket_IPv6_t * ) pxARPWaitingNetworkBuffer->pucEthernetBuffer );
+                const IPHeader_IPv6_t * pxIPHeader = &( pxIPPacket->xIPHeader );
+                if( memcmp( pxIPAddress->xIPAddress.xIP_IPv6.ucBytes, pxIPHeader->xSourceAddress.ucBytes, ipSIZE_OF_IPv6_ADDRESS ) == 0 )
+                {
+                    xResult = pdTRUE;
+                }
+            }
         }
-    }
-    else
-    {
-        const IPPacket_t * pxIPPacket = ( ( const IPPacket_t * ) pxARPWaitingNetworkBuffer->pucEthernetBuffer );
-        const IPHeader_t * pxIPHeader = &( pxIPPacket->xIPHeader );
-        if( pxIPAddress->xIPAddress.ulIP_IPv4 == pxIPHeader->ulSourceIPAddress )
+        else
         {
-            xResult = pdTRUE;
+            if( uxIPHeaderSizePacket( pxARPWaitingNetworkBuffer ) == ipSIZE_OF_IPv4_HEADER )
+            {
+                const IPPacket_t * pxIPPacket = ( ( const IPPacket_t * ) pxARPWaitingNetworkBuffer->pucEthernetBuffer );
+                const IPHeader_t * pxIPHeader = &( pxIPPacket->xIPHeader );
+                if( pxIPAddress->xIPAddress.ulIP_IPv4 == pxIPHeader->ulSourceIPAddress )
+                {
+                    xResult = pdTRUE;
+                }
+            }
         }
     }
 

@@ -413,6 +413,7 @@
                 }
 
                 case ipICMP_NEIGHBOR_ADVERTISEMENT_IPv6:
+                {
                     /* MISRA Ref 11.3.1 [Misaligned access] */
                     /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-113 */
                     /* coverity[misra_c_2012_rule_11_3_violation] */
@@ -428,13 +429,13 @@
                         vReceiveNA( pxNetworkBuffer );
                     #endif
 
-                    if( ( pxARPWaitingNetworkBuffer != NULL ) &&
-                        ( uxIPHeaderSizePacket( pxARPWaitingNetworkBuffer ) == ipSIZE_OF_IPv6_HEADER ) )
-                    {
-                        prvCheckArpWaitingBuffer( &( pxICMPHeader_IPv6->xIPv6Address ) );
-                    }
+                    IPv46_Address_t xIPv6Address;
+                    memcpy( xIPv6Address.xIPAddress.xIP_IPv6.usBytes, pxICMPHeader_IPv6->xIPv6Address.ucBytes, ipSIZE_OF_IPv6_ADDRESS );
+                    xIPv6Address.xIs_IPv6 = pdTRUE;
+                    vCheckArpWaitingBuffer( &xIPAddress );
 
                     break;
+                }
 
                 case ipICMP_ROUTER_ADVERTISEMENT_IPv6:
                     #if ipconfigIS_ENABLED( ipconfigUSE_RA )
