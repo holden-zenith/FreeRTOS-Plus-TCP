@@ -176,7 +176,7 @@ static eFrameProcessingResult_t prvProcessIPPacket( const IPPacket_t * pxIPPacke
 static void prvHandleEthernetPacket( NetworkBufferDescriptor_t * pxBuffer );
 
 /* Handle the 'eNetworkTxEvent': forward a packet from an application to the NIC. */
-static void prvForwardTxPacket( NetworkBufferDescriptor_t * pxNetworkBuffer,
+static void prvForwardTxPacket( NetworkBufferDescriptor_t * const pxNetworkBuffer,
                                 BaseType_t xReleaseAfterSend );
 
 static eFrameProcessingResult_t prvProcessUDPPacket( NetworkBufferDescriptor_t * const pxNetworkBuffer );
@@ -747,14 +747,158 @@ static void prvHandleEthernetPacket( NetworkBufferDescriptor_t * pxBuffer )
  * @param[in] pxNetworkBuffer The message buffer.
  * @param[in] xReleaseAfterSend When true, the network interface will own the buffer and is responsible for it's release.
  */
-static void prvForwardTxPacket( NetworkBufferDescriptor_t * pxNetworkBuffer,
+static void prvForwardTxPacket( NetworkBufferDescriptor_t * const pxNetworkBuffer,
                                 BaseType_t xReleaseAfterSend )
 {
-    iptraceNETWORK_INTERFACE_OUTPUT( pxNetworkBuffer->xDataLength, pxNetworkBuffer->pucEthernetBuffer );
+    BaseType_t xDoRelease = xReleaseAfterSend;
 
-    if( pxNetworkBuffer->pxInterface != NULL )
+    do
     {
-        ( void ) pxNetworkBuffer->pxInterface->pfOutput( pxNetworkBuffer->pxInterface, pxNetworkBuffer, xReleaseAfterSend );
+        NetworkEndPoint_t * pxEndPoint = NULL;
+        NetworkInterface_t * pxInterface = NULL;
+        EthernetHeader_t * pxEthernetHeader = NULL;
+
+        if( pxNetworkBuffer == NULL )
+        {
+            /* There will never be any buffer to send or release.
+             * Don't attempt to release. */
+            xDoRelease = pdFALSE;
+            break;
+        }
+
+        pxEndPoint = pxNetworkBuffer->pxEndPoint;
+
+        if( pxEndPoint == NULL )
+        {
+            /* We don't know who to send the buffer to.
+             * Release the buffer if expected. */
+            break;
+        }
+
+        pxInterface = pxEndPoint->pxNetworkInterface;
+
+        if( pxInterface == NULL )
+        {
+            /* We have no interface to send the buffer from.
+             * Release the buffer if expected. */
+            break;
+        }
+
+        /* It is invalid to try to send to an interface without an output method. */
+        configASSERT( pxInterface->pfOutput != NULL );
+
+        pxEthernetHeader = ( EthernetHeader_t * ) pxNetworkBuffer->pucEthernetBuffer;
+
+        if( pxEthernetHeader == NULL )
+        {
+            /* There is no actual data to send.
+             * Release the buffer if expected. */
+            break;
+        }
+
+        if( xIPIsNetworkTaskReady() == pdFALSE )
+        {
+            /* Only the IP task can directly send packets, and
+             * tx events can only be queued if the IP task has started.
+             * Release the buffer if expected. */
+            break;
+        }
+
+        /* TODO: If loopback, handle immediately? */
+
+        /* Packet is verified valid, handle it based on where this was called from. */
+        if( xIsCallingFromIPTask() != pdFALSE )
+        {
+            /* Send Immediately */
+            iptraceNETWORK_INTERFACE_OUTPUT( pxNetworkBuffer->xDataLength, pxNetworkBuffer->pucEthernetBuffer );
+
+            /* #if ipconfigIS_ENABLED( ipconfigHAS_DEBUG_PRINTF )
+            {
+                char pcName[ ipSIZE_OF_IPv6_ADDRESS ] = { 0 };
+                FreeRTOS_debug_printf( ( "vForwardTxPacket: Attempting to send to EP %s\n", pcEndpointName( pxEndPoint, pcName, sizeof( pcName ) ) ) );
+            }
+            #endif */
+
+            if( FreeRTOS_IsEndPointUp( pxEndPoint ) == pdFALSE )
+            {
+                /* If the endpoint is not up then we can't send immediately,
+                 * but if not calling from IP Task then we allow it to queue
+                 * in case the endpoint comes back up in time.
+                 * Release the buffer if expected. */
+                break;
+            }
+
+            /* Should this be done before calling this? */
+            ( void ) memcpy( pxEthernetHeader->xSourceAddress.ucBytes, pxEndPoint->xMACAddress.ucBytes, ( size_t ) ipMAC_ADDRESS_LENGTH_BYTES );
+
+            #if ( ipconfigETHERNET_MINIMUM_PACKET_BYTES > 0 )
+                if( pxNetworkBuffer->xDataLength < ( size_t ) ipconfigETHERNET_MINIMUM_PACKET_BYTES )
+                {
+                    size_t uxIndex;
+
+                    for( uxIndex = pxNetworkBuffer->xDataLength; uxIndex < ipconfigETHERNET_MINIMUM_PACKET_BYTES; uxIndex++ )
+                    {
+                        pxNetworkBuffer->pucEthernetBuffer[ uxIndex ] = 0U;
+                    }
+
+                    pxNetworkBuffer->xDataLength = ( size_t ) ipconfigETHERNET_MINIMUM_PACKET_BYTES;
+                }
+            #endif /* if( ipconfigETHERNET_MINIMUM_PACKET_BYTES > 0 ) */
+
+            /* Only the IP-task is allowed to call this function directly. */
+            ( void ) pxInterface->pfOutput( pxInterface, pxNetworkBuffer, xReleaseAfterSend );
+            /* TODO: Is the return value of pfOutput relevant? */
+            if( xReleaseAfterSend != pdFALSE )
+            {
+                if( xBufferAllocFixedSize == pdFALSE  )
+                {
+                    if( ( pxNetworkBuffer->pucEthernetBuffer != NULL ) && ( pxNetworkBuffer->xDataLength > 0 ) )
+                    {
+                        /* In this particular case we can be certain the Network Interface
+                         * failed to release the buffer space as expected, release manually to avoid leaks. */
+                        xDoRelease = pdTRUE;
+                    }
+                }
+                else
+                {
+                    /* There is no way to know for sure if the buffer semaphore was released as expected,
+                     * assume it was. */
+                    xDoRelease = pdFALSE;
+                }
+            }
+            else
+            {
+                /* Nothing left to be done. */
+                xDoRelease = pdFALSE;
+            }
+        }
+        else
+        {
+            if( xReleaseAfterSend != pdFALSE )
+            {
+                /* We have control of the buffer so queue for IP Task to send later */
+                IPStackEvent_t xSendEvent;
+
+                /* Send a message to the IP-task to send this packet. */
+                xSendEvent.eEventType = eNetworkTxEvent;
+                xSendEvent.pvData = pxNetworkBuffer;
+
+                if( xSendEventStructToIPTask( &xSendEvent, ( TickType_t ) portMAX_DELAY ) == pdFAIL )
+                {
+                    /* Failed to send the message, so release the network buffer as expected to avoid leaks. */
+                    xDoRelease = pdTRUE;
+                }
+            }
+            else
+            {
+                /* Can't claim control of the packet to queue it for tx, it is effectively lost. */
+            }
+        }
+    } while( ipFALSE_BOOL );
+
+    if( xDoRelease != pdFALSE )
+    {
+        vReleaseNetworkBufferAndDescriptor( pxNetworkBuffer );
     }
 }
 /*-----------------------------------------------------------*/
