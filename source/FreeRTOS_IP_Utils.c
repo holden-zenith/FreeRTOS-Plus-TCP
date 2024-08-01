@@ -209,7 +209,7 @@ static uint16_t prvGetChecksumFromPacket( const struct xPacketSummary * pxSet )
     return usChecksum;
 }
 
-#if ( ipconfigUSE_DHCPv6 == 1 ) || ( ipconfigUSE_DHCP == 1 ) || ( ipconfigUSE_RA == 1 )
+#if ( ( ipconfigUSE_DHCPv6 == 1 ) || ( ipconfigUSE_DHCP == 1 ) || ( ipconfigUSE_RA == 1 ) )
 
 /**
  * @brief Create a DHCP event.
@@ -223,7 +223,7 @@ static uint16_t prvGetChecksumFromPacket( const struct xPacketSummary * pxSet )
         IPStackEvent_t xEventMessage;
         const TickType_t uxDontBlock = 0U;
 
-        #if ( ipconfigUSE_DHCPv6 == 1 ) || ( ipconfigUSE_DHCP == 1 )
+        #if ( ( ipconfigUSE_DHCPv6 == 1 ) || ( ipconfigUSE_DHCP == 1 ) )
             eDHCPState_t uxOption = eGetDHCPState( pxEndPoint );
         #endif
 
@@ -233,7 +233,7 @@ static uint16_t prvGetChecksumFromPacket( const struct xPacketSummary * pxSet )
         /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-116 */
         /* coverity[misra_c_2012_rule_11_6_violation] */
         xEventMessage.pvData = ( void * ) pxEndPoint;
-        #if ( ipconfigUSE_DHCPv6 == 1 ) || ( ipconfigUSE_DHCP == 1 )
+        #if ( ( ipconfigUSE_DHCPv6 == 1 ) || ( ipconfigUSE_DHCP == 1 ) )
         {
             pxEndPoint->xDHCPData.eExpectedState = uxOption;
         }
@@ -241,7 +241,7 @@ static uint16_t prvGetChecksumFromPacket( const struct xPacketSummary * pxSet )
 
         return xSendEventStructToIPTask( &xEventMessage, uxDontBlock );
     }
-#endif /* if ( ipconfigUSE_DHCPv6 == 1 ) || ( ipconfigUSE_DHCP == 1 ) */
+#endif /* if ( ( ipconfigUSE_DHCPv6 == 1 ) || ( ipconfigUSE_DHCP == 1 ) || ( ipconfigUSE_RA == 1 ) ) */
 /*-----------------------------------------------------------*/
 
 /**
@@ -835,6 +835,15 @@ void prvProcessNetworkDownEvent( struct xNetworkInterface * pxInterface )
     {
         /* The bit 'bEndPointUp' stays low until vIPNetworkUpCalls() is called. */
         pxEndPoint->bits.bEndPointUp = pdFALSE_UNSIGNED;
+
+        if( pxEndPoint->bits.bIPv6 == pdTRUE_UNSIGNED )
+        {
+            /* IPv6 end-points have a solicited-node address that needs extra housekeeping. */
+            #if ( ipconfigIS_ENABLED( ipconfigUSE_IPv6 ) )
+                vManageSolicitedNodeAddress( pxEndPoint, pdFALSE );
+            #endif
+        }
+
         #if ( ipconfigUSE_NETWORK_EVENT_HOOK == 1 )
         {
             if( pxEndPoint->bits.bCallDownHook != pdFALSE_UNSIGNED )
@@ -950,8 +959,6 @@ void prvProcessNetworkDownEvent( struct xNetworkInterface * pxInterface )
                         /* MISRA 16.4 Compliance */
                         break;
                 }
-
-                *ipLOCAL_IP_ADDRESS_POINTER = pxEndPoint->ipv4_settings.ulIPAddress;
 
                 /* DHCP or Router Advertisement are not enabled for this end-point.
                  * Perform any necessary 'network up' processing. */
@@ -1069,9 +1076,9 @@ uint16_t usGenerateProtocolChecksum( uint8_t * pucEthernetBuffer,
 {
     struct xPacketSummary xSet;
 
-    ( void ) memset( &( xSet ), 0, sizeof( xSet ) );
-
     DEBUG_DECLARE_TRACE_VARIABLE( BaseType_t, xLocation, 0 );
+
+    ( void ) memset( &( xSet ), 0, sizeof( xSet ) );
 
     #if ( ipconfigHAS_DEBUG_PRINTF != 0 )
     {
@@ -1494,7 +1501,6 @@ uint16_t usGenerateChecksum( uint16_t usSum,
         }
         #endif /* ipconfigCHECK_IP_QUEUE_SPACE */
     }
-#endif /* ( ipconfigHAS_PRINTF != 0 ) */
 /*-----------------------------------------------------------*/
 
 /**
@@ -1508,105 +1514,107 @@ uint16_t usGenerateChecksum( uint16_t usSum,
  * @return The buffer filled with human readable error string.
  */
 
-const char * FreeRTOS_strerror_r( BaseType_t xErrnum,
-                                  char * pcBuffer,
-                                  size_t uxLength )
-{
-    const char * pcName;
-    BaseType_t xErrnumPositive = xErrnum;
-
-    if( xErrnumPositive < 0 )
+    const char * FreeRTOS_strerror_r( BaseType_t xErrnum,
+                                      char * pcBuffer,
+                                      size_t uxLength )
     {
-        xErrnumPositive = -xErrnumPositive;
-    }
+        const char * pcName;
+        BaseType_t xErrnumPositive = xErrnum;
 
-    switch( xErrnumPositive )
-    {
-        case pdFREERTOS_ERRNO_EADDRINUSE:
-            pcName = "EADDRINUSE";
-            break;
+        if( xErrnumPositive < 0 )
+        {
+            xErrnumPositive = -xErrnumPositive;
+        }
 
-        case pdFREERTOS_ERRNO_ENOMEM:
-            pcName = "ENOMEM";
-            break;
+        switch( xErrnumPositive )
+        {
+            case pdFREERTOS_ERRNO_EADDRINUSE:
+                pcName = "EADDRINUSE";
+                break;
 
-        case pdFREERTOS_ERRNO_EADDRNOTAVAIL:
-            pcName = "EADDRNOTAVAIL";
-            break;
+            case pdFREERTOS_ERRNO_ENOMEM:
+                pcName = "ENOMEM";
+                break;
 
-        case pdFREERTOS_ERRNO_ENOPROTOOPT:
-            pcName = "ENOPROTOOPT";
-            break;
+            case pdFREERTOS_ERRNO_EADDRNOTAVAIL:
+                pcName = "EADDRNOTAVAIL";
+                break;
 
-        case pdFREERTOS_ERRNO_EBADF:
-            pcName = "EBADF";
-            break;
+            case pdFREERTOS_ERRNO_ENOPROTOOPT:
+                pcName = "ENOPROTOOPT";
+                break;
 
-        case pdFREERTOS_ERRNO_ENOSPC:
-            pcName = "ENOSPC";
-            break;
+            case pdFREERTOS_ERRNO_EBADF:
+                pcName = "EBADF";
+                break;
 
-        case pdFREERTOS_ERRNO_ECANCELED:
-            pcName = "ECANCELED";
-            break;
+            case pdFREERTOS_ERRNO_ENOSPC:
+                pcName = "ENOSPC";
+                break;
 
-        case pdFREERTOS_ERRNO_ENOTCONN:
-            pcName = "ENOTCONN";
-            break;
+            case pdFREERTOS_ERRNO_ECANCELED:
+                pcName = "ECANCELED";
+                break;
 
-        case pdFREERTOS_ERRNO_EINPROGRESS:
-            pcName = "EINPROGRESS";
-            break;
+            case pdFREERTOS_ERRNO_ENOTCONN:
+                pcName = "ENOTCONN";
+                break;
 
-        case pdFREERTOS_ERRNO_EOPNOTSUPP:
-            pcName = "EOPNOTSUPP";
-            break;
+            case pdFREERTOS_ERRNO_EINPROGRESS:
+                pcName = "EINPROGRESS";
+                break;
 
-        case pdFREERTOS_ERRNO_EINTR:
-            pcName = "EINTR";
-            break;
+            case pdFREERTOS_ERRNO_EOPNOTSUPP:
+                pcName = "EOPNOTSUPP";
+                break;
 
-        case pdFREERTOS_ERRNO_ETIMEDOUT:
-            pcName = "ETIMEDOUT";
-            break;
+            case pdFREERTOS_ERRNO_EINTR:
+                pcName = "EINTR";
+                break;
 
-        case pdFREERTOS_ERRNO_EINVAL:
-            pcName = "EINVAL";
-            break;
+            case pdFREERTOS_ERRNO_ETIMEDOUT:
+                pcName = "ETIMEDOUT";
+                break;
 
-        case pdFREERTOS_ERRNO_EWOULDBLOCK:
-            pcName = "EWOULDBLOCK";
-            break; /* same as EAGAIN */
+            case pdFREERTOS_ERRNO_EINVAL:
+                pcName = "EINVAL";
+                break;
 
-        case pdFREERTOS_ERRNO_EISCONN:
-            pcName = "EISCONN";
-            break;
+            case pdFREERTOS_ERRNO_EWOULDBLOCK:
+                pcName = "EWOULDBLOCK";
+                break; /* same as EAGAIN */
 
-        default:
+            case pdFREERTOS_ERRNO_EISCONN:
+                pcName = "EISCONN";
+                break;
+
+            default:
+                /* MISRA Ref 21.6.1 [snprintf and logging] */
+                /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-216 */
+                /* coverity[misra_c_2012_rule_21_6_violation] */
+                ( void ) snprintf( pcBuffer, uxLength, "Errno 0x%lx", xErrnum );
+                pcName = NULL;
+                break;
+        }
+
+        if( pcName != NULL )
+        {
             /* MISRA Ref 21.6.1 [snprintf and logging] */
             /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-216 */
             /* coverity[misra_c_2012_rule_21_6_violation] */
-            ( void ) snprintf( pcBuffer, uxLength, "Errno 0x%lx", xErrnum );
-            pcName = NULL;
-            break;
-    }
+            ( void ) snprintf( pcBuffer, uxLength, "%s", pcName );
+        }
 
-    if( pcName != NULL )
-    {
-        /* MISRA Ref 21.6.1 [snprintf and logging] */
-        /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-216 */
-        /* coverity[misra_c_2012_rule_21_6_violation] */
-        ( void ) snprintf( pcBuffer, uxLength, "%s", pcName );
-    }
+        if( uxLength > 0U )
+        {
+            pcBuffer[ uxLength - 1U ] = '\0';
+        }
 
-    if( uxLength > 0U )
-    {
-        pcBuffer[ uxLength - 1U ] = '\0';
+        return pcBuffer;
     }
-
-    return pcBuffer;
-}
 /*-----------------------------------------------------------*/
+
+#endif /* ( ipconfigHAS_PRINTF != 0 ) */
 
 /**
  * @brief Get the highest value of two int32's.
@@ -1764,3 +1772,18 @@ uint16_t usChar2u16( const uint8_t * pucPtr )
              ( ( ( uint32_t ) pucPtr[ 1 ] ) ) );
 }
 /*-----------------------------------------------------------*/
+
+#if ( ( ipconfigUSE_DHCPv6 == 1 ) || ( ipconfigUSE_DHCP == 1 ) )
+
+/**
+ * @brief Returns the current state of a DHCP process.
+ *
+ * @param[in] pxEndPoint the end-point which is going through the DHCP process.
+ */
+    eDHCPState_t eGetDHCPState( const struct xNetworkEndPoint * pxEndPoint )
+    {
+        return pxEndPoint->xDHCPData.eDHCPState;
+    }
+    /*-----------------------------------------------------------*/
+
+#endif /* ( ipconfigUSE_DHCPv6 == 1 ) || ( ipconfigUSE_DHCP == 1 ) */

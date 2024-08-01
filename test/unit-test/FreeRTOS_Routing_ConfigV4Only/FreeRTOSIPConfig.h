@@ -34,8 +34,6 @@
 
 #define TEST                                      1
 
-#define ipconfigMULTI_INTERFACE                   1
-
 #define ipconfigUSE_IPv4                          ( 1 )
 
 #define ipconfigUSE_IPv6                          ( 0 )
@@ -45,8 +43,6 @@
 #define ipconfigUSE_DHCPv6                        ( 0 )
 
 #define ipconfigCOMPATIBLE_WITH_SINGLE            ( 0 )
-
-#define ipconfigHAS_ROUTING_STATISTICS            ( 1 )
 
 #define ipconfigPROCESS_CUSTOM_ETHERNET_FRAMES    ( 1 )
 

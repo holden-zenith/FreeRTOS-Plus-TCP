@@ -319,13 +319,16 @@
 #define ipconfigTCP_KEEP_ALIVE                   ( 1 )
 #define ipconfigTCP_KEEP_ALIVE_INTERVAL          ( 20 ) /* Seconds. */
 
-/* The socket semaphore is used to unblock the MQTT task. */
-#define ipconfigSOCKET_HAS_USER_SEMAPHORE        ( 1 )
-
 #define ipconfigSOCKET_HAS_USER_WAKE_CALLBACK    ( 1 )
 #define ipconfigUSE_CALLBACKS                    ( 1 )
 
 
 #define portINLINE                               __inline
+
+#define ipconfigISO_STRICTNESS_VIOLATION_START \
+    _Pragma("GCC diagnostic push")             \
+    _Pragma("GCC diagnostic ignored \"-Wpedantic\"")
+
+#define ipconfigISO_STRICTNESS_VIOLATION_END    _Pragma("GCC diagnostic pop")
 
 #endif /* FREERTOS_IP_CONFIG_H */

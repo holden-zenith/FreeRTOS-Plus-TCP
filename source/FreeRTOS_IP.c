@@ -92,26 +92,11 @@
     #endif
 #endif
 
-#if ( ipconfigUSE_TCP != 0 )
-
-/** @brief Set to a non-zero value if one or more TCP message have been processed
- * within the last round. */
-    BaseType_t xProcessedTCPMessage;
-#endif
-
-/** @brief If ipconfigETHERNET_DRIVER_FILTERS_FRAME_TYPES is set to 1, then the Ethernet
- * driver will filter incoming packets and only pass the stack those packets it
- * considers need processing.  In this case ipCONSIDER_FRAME_FOR_PROCESSING() can
- * be #-defined away.  If ipconfigETHERNET_DRIVER_FILTERS_FRAME_TYPES is set to 0
- * then the Ethernet driver will pass all received packets to the stack, and the
- * stack must do the filtering itself.  In this case ipCONSIDER_FRAME_FOR_PROCESSING
- * needs to call eConsiderFrameForProcessing.
- */
-#if ipconfigETHERNET_DRIVER_FILTERS_FRAME_TYPES == 0
-    #define ipCONSIDER_FRAME_FOR_PROCESSING( pucEthernetBuffer )    eConsiderFrameForProcessing( ( pucEthernetBuffer ) )
-#else
-    #define ipCONSIDER_FRAME_FOR_PROCESSING( pucEthernetBuffer )    eProcessBuffer
-#endif
+/** @brief The frame type field in the Ethernet header must have a value greater than 0x0600.
+ * If the configuration option ipconfigFILTER_OUT_NON_ETHERNET_II_FRAMES is enabled, the stack
+ * will discard packets with a frame type value less than or equal to 0x0600.
+ * However, if this option is disabled, the stack will continue to process these packets. */
+#define ipIS_ETHERNET_FRAME_TYPE_INVALID( usFrameType )    ( ( usFrameType ) <= 0x0600U )
 
 static void prvCallDHCP_RA_Handler( NetworkEndPoint_t * pxEndPoint );
 
@@ -631,6 +616,14 @@ TaskHandle_t FreeRTOS_GetIPTaskHandle( void )
  */
 void vIPNetworkUpCalls( struct xNetworkEndPoint * pxEndPoint )
 {
+    if( pxEndPoint->bits.bIPv6 == pdTRUE_UNSIGNED )
+    {
+        /* IPv6 end-points have a solicited-node address that needs extra housekeeping. */
+        #if ( ipconfigIS_ENABLED( ipconfigUSE_IPv6 ) )
+            vManageSolicitedNodeAddress( pxEndPoint, pdTRUE );
+        #endif
+    }
+
     pxEndPoint->bits.bEndPointUp = pdTRUE_UNSIGNED;
 
     #if ( ipconfigUSE_NETWORK_EVENT_HOOK == 1 )
@@ -672,7 +665,10 @@ static void prvHandleEthernetPacket( NetworkBufferDescriptor_t * pxBuffer )
         /* When ipconfigUSE_LINKED_RX_MESSAGES is set to 0 then only one
          * buffer will be sent at a time.  This is the default way for +TCP to pass
          * messages from the MAC to the TCP/IP stack. */
-        prvProcessEthernetPacket( pxBuffer );
+        if( pxBuffer != NULL )
+        {
+            prvProcessEthernetPacket( pxBuffer );
+        }
     }
     #else /* ipconfigUSE_LINKED_RX_MESSAGES */
     {
@@ -873,6 +869,7 @@ void * FreeRTOS_GetUDPPayloadBuffer_Multi( size_t uxRequestedSizeBytes,
 
         if( pxNetworkBuffer != NULL )
         {
+            uint8_t * pucIPType;
             size_t uxIndex = ipUDP_PAYLOAD_IP_TYPE_OFFSET;
             BaseType_t xPayloadIPTypeOffset = ( BaseType_t ) uxIndex;
 
@@ -881,8 +878,6 @@ void * FreeRTOS_GetUDPPayloadBuffer_Multi( size_t uxRequestedSizeBytes,
 
             /* Skip 3 headers. */
             pvReturn = ( void * ) &( pxNetworkBuffer->pucEthernetBuffer[ uxPayloadOffset ] );
-
-            uint8_t * pucIPType;
 
             /* Later a pointer to a UDP payload is used to retrieve a NetworkBuffer.
              * Store the packet type at 48 bytes before the start of the UDP payload. */
@@ -921,7 +916,7 @@ void * FreeRTOS_GetUDPPayloadBuffer_Multi( size_t uxRequestedSizeBytes,
 
         /* IF the following function should be declared in the NetworkInterface.c
          * linked in the project. */
-        pxFillInterfaceDescriptor( 0, &( xInterfaces[ 0 ] ) );
+        ( void ) pxFillInterfaceDescriptor( 0, &( xInterfaces[ 0 ] ) );
         FreeRTOS_FillEndPoint( &( xInterfaces[ 0 ] ), &( xEndPoints[ 0 ] ), ucIPAddress, ucNetMask, ucGatewayAddress, ucDNSServerAddress, ucMACAddress );
         #if ( ipconfigUSE_DHCP != 0 )
         {
@@ -1044,6 +1039,8 @@ void FreeRTOS_ReleaseUDPPayloadBuffer( void const * pvBuffer )
 }
 /*-----------------------------------------------------------*/
 
+#if ( ipconfigUSE_IPv4 != 0 )
+
 /**
  * @brief Get the current IPv4 address configuration. Only non-NULL pointers will
  *        be filled in. pxEndPoint must be non-NULL.
@@ -1054,40 +1051,42 @@ void FreeRTOS_ReleaseUDPPayloadBuffer( void const * pvBuffer )
  * @param[out] pulDNSServerAddress The DNS server address.
  * @param[in] pxEndPoint The end-point which is being questioned.
  */
-void FreeRTOS_GetEndPointConfiguration( uint32_t * pulIPAddress,
-                                        uint32_t * pulNetMask,
-                                        uint32_t * pulGatewayAddress,
-                                        uint32_t * pulDNSServerAddress,
-                                        const struct xNetworkEndPoint * pxEndPoint )
-{
-    if( ENDPOINT_IS_IPv4( pxEndPoint ) )
+    void FreeRTOS_GetEndPointConfiguration( uint32_t * pulIPAddress,
+                                            uint32_t * pulNetMask,
+                                            uint32_t * pulGatewayAddress,
+                                            uint32_t * pulDNSServerAddress,
+                                            const struct xNetworkEndPoint * pxEndPoint )
     {
-        /* Return the address configuration to the caller. */
-
-        if( pulIPAddress != NULL )
+        if( ENDPOINT_IS_IPv4( pxEndPoint ) )
         {
-            *pulIPAddress = pxEndPoint->ipv4_settings.ulIPAddress;
-        }
+            /* Return the address configuration to the caller. */
 
-        if( pulNetMask != NULL )
-        {
-            *pulNetMask = pxEndPoint->ipv4_settings.ulNetMask;
-        }
+            if( pulIPAddress != NULL )
+            {
+                *pulIPAddress = pxEndPoint->ipv4_settings.ulIPAddress;
+            }
 
-        if( pulGatewayAddress != NULL )
-        {
-            *pulGatewayAddress = pxEndPoint->ipv4_settings.ulGatewayAddress;
-        }
+            if( pulNetMask != NULL )
+            {
+                *pulNetMask = pxEndPoint->ipv4_settings.ulNetMask;
+            }
 
-        if( pulDNSServerAddress != NULL )
-        {
-            *pulDNSServerAddress = pxEndPoint->ipv4_settings.ulDNSServerAddresses[ 0 ]; /*_RB_ Only returning the address of the first DNS server. */
+            if( pulGatewayAddress != NULL )
+            {
+                *pulGatewayAddress = pxEndPoint->ipv4_settings.ulGatewayAddress;
+            }
+
+            if( pulDNSServerAddress != NULL )
+            {
+                *pulDNSServerAddress = pxEndPoint->ipv4_settings.ulDNSServerAddresses[ 0 ]; /*_RB_ Only returning the address of the first DNS server. */
+            }
         }
     }
-}
 /*-----------------------------------------------------------*/
 
-#if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 )
+#endif /* ( ipconfigUSE_IPv4 != 0 ) */
+
+#if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 ) && ( ipconfigUSE_IPv4 != 0 )
 
 /**
  * @brief Get the current IPv4 address configuration of the first endpoint.
@@ -1116,8 +1115,10 @@ void FreeRTOS_GetEndPointConfiguration( uint32_t * pulIPAddress,
                                                pulGatewayAddress, pulDNSServerAddress, pxEndPoint );
         }
     }
-#endif /* if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 ) */
+#endif /* if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 ) && ( ipconfigUSE_IPv4 != 0 ) */
 /*-----------------------------------------------------------*/
+
+#if ( ipconfigUSE_IPv4 != 0 )
 
 /**
  * @brief Set the current IPv4 network address configuration. Only non-NULL pointers will
@@ -1129,40 +1130,42 @@ void FreeRTOS_GetEndPointConfiguration( uint32_t * pulIPAddress,
  * @param[in] pulDNSServerAddress The DNS server address.
  * @param[in] pxEndPoint The end-point which is being questioned.
  */
-void FreeRTOS_SetEndPointConfiguration( const uint32_t * pulIPAddress,
-                                        const uint32_t * pulNetMask,
-                                        const uint32_t * pulGatewayAddress,
-                                        const uint32_t * pulDNSServerAddress,
-                                        struct xNetworkEndPoint * pxEndPoint )
-{
-    /* Update the address configuration. */
-
-    if( ENDPOINT_IS_IPv4( pxEndPoint ) )
+    void FreeRTOS_SetEndPointConfiguration( const uint32_t * pulIPAddress,
+                                            const uint32_t * pulNetMask,
+                                            const uint32_t * pulGatewayAddress,
+                                            const uint32_t * pulDNSServerAddress,
+                                            struct xNetworkEndPoint * pxEndPoint )
     {
-        if( pulIPAddress != NULL )
-        {
-            pxEndPoint->ipv4_settings.ulIPAddress = *pulIPAddress;
-        }
+        /* Update the address configuration. */
 
-        if( pulNetMask != NULL )
+        if( ENDPOINT_IS_IPv4( pxEndPoint ) )
         {
-            pxEndPoint->ipv4_settings.ulNetMask = *pulNetMask;
-        }
+            if( pulIPAddress != NULL )
+            {
+                pxEndPoint->ipv4_settings.ulIPAddress = *pulIPAddress;
+            }
 
-        if( pulGatewayAddress != NULL )
-        {
-            pxEndPoint->ipv4_settings.ulGatewayAddress = *pulGatewayAddress;
-        }
+            if( pulNetMask != NULL )
+            {
+                pxEndPoint->ipv4_settings.ulNetMask = *pulNetMask;
+            }
 
-        if( pulDNSServerAddress != NULL )
-        {
-            pxEndPoint->ipv4_settings.ulDNSServerAddresses[ 0 ] = *pulDNSServerAddress;
+            if( pulGatewayAddress != NULL )
+            {
+                pxEndPoint->ipv4_settings.ulGatewayAddress = *pulGatewayAddress;
+            }
+
+            if( pulDNSServerAddress != NULL )
+            {
+                pxEndPoint->ipv4_settings.ulDNSServerAddresses[ 0 ] = *pulDNSServerAddress;
+            }
         }
     }
-}
 /*-----------------------------------------------------------*/
 
-#if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 )
+#endif /* ( ipconfigUSE_IPv4 != 0 ) */
+
+#if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 ) && ( ipconfigUSE_IPv4 != 0 )
 
 /**
  * @brief Set the current IPv4 network address configuration. Only non-NULL
@@ -1191,7 +1194,7 @@ void FreeRTOS_SetEndPointConfiguration( const uint32_t * pulIPAddress,
                                                pulGatewayAddress, pulDNSServerAddress, pxEndPoint );
         }
     }
-#endif /* if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 ) */
+#endif /* if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 ) && ( ipconfigUSE_IPv4 != 0 ) */
 /*-----------------------------------------------------------*/
 
 #if ( ipconfigUSE_TCP == 1 )
@@ -1440,85 +1443,165 @@ BaseType_t xSendEventStructToIPTask( const IPStackEvent_t * pxEvent,
  */
 eFrameProcessingResult_t eConsiderFrameForProcessing( const uint8_t * const pucEthernetBuffer )
 {
-    eFrameProcessingResult_t eReturn = eProcessBuffer;
-    const EthernetHeader_t * pxEthernetHeader = NULL;
-    const NetworkEndPoint_t * pxEndPoint = NULL;
+    eFrameProcessingResult_t eReturn = eReleaseBuffer;
 
-    if( pucEthernetBuffer == NULL )
+    do
     {
-        eReturn = eReleaseBuffer;
-    }
-    else
-    {
+        const EthernetHeader_t * pxEthernetHeader = NULL;
+        const NetworkEndPoint_t * pxEndPoint = NULL;
+        uint16_t usFrameType;
+
+        /* First, check the packet buffer is non-null. */
+        if( pucEthernetBuffer == NULL )
+        {
+            /* The packet buffer was null - release it. */
+            break;
+        }
+
         /* Map the buffer onto Ethernet Header struct for easy access to fields. */
-
         /* MISRA Ref 11.3.1 [Misaligned access] */
         /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-113 */
         /* coverity[misra_c_2012_rule_11_3_violation] */
         pxEthernetHeader = ( ( const EthernetHeader_t * ) pucEthernetBuffer );
+        usFrameType = pxEthernetHeader->usFrameType;
 
-        /* Examine the destination MAC from the Ethernet header to see if it matches
-         * that of an end point managed by FreeRTOS+TCP. */
+        /* Second, filter based on ethernet frame type. */
+        /* The frame type field in the Ethernet header must have a value greater than 0x0600. */
+        if( ipIS_ETHERNET_FRAME_TYPE_INVALID( FreeRTOS_ntohs( usFrameType ) ) )
+        {
+            /* The packet was not an Ethernet II frame */
+            #if ipconfigIS_ENABLED( ipconfigFILTER_OUT_NON_ETHERNET_II_FRAMES )
+                /* filtering is enabled - release it. */
+                break;
+            #else
+                /* filtering is disabled - continue filter checks. */
+            #endif
+        }
+        else if( usFrameType == ipARP_FRAME_TYPE )
+        {
+            /* The frame is an ARP type */
+            #if ipconfigIS_DISABLED( ipconfigUSE_IPv4 )
+                /* IPv4 is disabled - release it. */
+                break;
+            #else
+                /*  IPv4 is enabled - Continue filter checks. */
+            #endif
+        }
+        else if( usFrameType == ipIPv4_FRAME_TYPE )
+        {
+            /* The frame is an IPv4 type */
+            #if ipconfigIS_DISABLED( ipconfigUSE_IPv4 )
+                /* IPv4 is disabled - release it. */
+                break;
+            #else
+                /* IPv4 is enabled - Continue filter checks. */
+            #endif
+        }
+        else if( usFrameType == ipIPv6_FRAME_TYPE )
+        {
+            /* The frame is an IPv6 type */
+            #if ipconfigIS_DISABLED( ipconfigUSE_IPv6 )
+                /* IPv6 is disabled - release it. */
+                break;
+            #else
+                /* IPv6 is enabled - Continue filter checks. */
+            #endif
+        }
+        else
+        {
+            /* The frame is an unsupported Ethernet II type */
+            #if ipconfigIS_DISABLED( ipconfigPROCESS_CUSTOM_ETHERNET_FRAMES )
+                /* Processing custom ethernet frames is disabled - release it. */
+                break;
+            #else
+                /* Processing custom ethernet frames is enabled - Continue filter checks. */
+            #endif
+        }
+
+        /* Third, filter based on destination mac address. */
         pxEndPoint = FreeRTOS_FindEndPointOnMAC( &( pxEthernetHeader->xDestinationAddress ), NULL );
 
         if( pxEndPoint != NULL )
         {
-            /* The packet was directed to this node - process it. */
-            eReturn = eProcessBuffer;
+            /* A destination endpoint was found - Continue filter checks. */
         }
         else if( memcmp( xBroadcastMACAddress.ucBytes, pxEthernetHeader->xDestinationAddress.ucBytes, sizeof( MACAddress_t ) ) == 0 )
         {
-            /* The packet was a broadcast - process it. */
-            eReturn = eProcessBuffer;
+            /* The packet was a broadcast - Continue filter checks. */
+        }
+        else if( memcmp( xLLMNR_MacAddress.ucBytes, pxEthernetHeader->xDestinationAddress.ucBytes, sizeof( MACAddress_t ) ) == 0 )
+        {
+            /* The packet is a request for LLMNR using IPv4 */
+            #if ( ipconfigIS_DISABLED( ipconfigUSE_DNS ) || ipconfigIS_DISABLED( ipconfigUSE_LLMNR ) || ipconfigIS_DISABLED( ipconfigUSE_IPv4 ) )
+                /* DNS, LLMNR, or IPv4 is disabled - release it. */
+                break;
+            #else
+                /* DNS, LLMNR, and IPv4 are enabled - Continue filter checks. */
+            #endif
+        }
+        else if( memcmp( xLLMNR_MacAddressIPv6.ucBytes, pxEthernetHeader->xDestinationAddress.ucBytes, sizeof( MACAddress_t ) ) == 0 )
+        {
+            /* The packet is a request for LLMNR using IPv6 */
+            #if ( ipconfigIS_DISABLED( ipconfigUSE_DNS ) || ipconfigIS_DISABLED( ipconfigUSE_LLMNR ) || ipconfigIS_DISABLED( ipconfigUSE_IPv6 ) )
+                /* DNS, LLMNR, or IPv6 is disabled - release it. */
+                break;
+            #else
+                /* DNS, LLMNR, and IPv6 are enabled - Continue filter checks. */
+            #endif
+        }
+        else if( memcmp( xMDNS_MacAddress.ucBytes, pxEthernetHeader->xDestinationAddress.ucBytes, sizeof( MACAddress_t ) ) == 0 )
+        {
+            /* The packet is a request for MDNS using IPv4 */
+            #if ( ipconfigIS_DISABLED( ipconfigUSE_DNS ) || ipconfigIS_DISABLED( ipconfigUSE_MDNS ) || ipconfigIS_DISABLED( ipconfigUSE_IPv4 ) )
+                /* DNS, MDNS, or IPv4 is disabled - release it. */
+                break;
+            #else
+                /* DNS, MDNS, and IPv4 are enabled - Continue filter checks. */
+            #endif
+        }
+        else if( memcmp( xMDNS_MacAddressIPv6.ucBytes, pxEthernetHeader->xDestinationAddress.ucBytes, sizeof( MACAddress_t ) ) == 0 )
+        {
+            /* The packet is a request for MDNS using IPv6 */
+            #if ( ipconfigIS_DISABLED( ipconfigUSE_DNS ) || ipconfigIS_DISABLED( ipconfigUSE_MDNS ) || ipconfigIS_DISABLED( ipconfigUSE_IPv6 ) )
+                /* DNS, MDNS, or IPv6 is disabled - release it. */
+                break;
+            #else
+                /* DNS, MDNS, and IPv6 are enabled - Continue filter checks. */
+            #endif
+        }
+        else if( ( pxEthernetHeader->xDestinationAddress.ucBytes[ 0 ] == ipMULTICAST_MAC_ADDRESS_IPv4_0 ) &&
+                 ( pxEthernetHeader->xDestinationAddress.ucBytes[ 1 ] == ipMULTICAST_MAC_ADDRESS_IPv4_1 ) &&
+                 ( pxEthernetHeader->xDestinationAddress.ucBytes[ 2 ] == ipMULTICAST_MAC_ADDRESS_IPv4_2 ) &&
+                 ( pxEthernetHeader->xDestinationAddress.ucBytes[ 3 ] <= 0x7fU ) )
+        {
+            /* The packet is an IPv4 Multicast */
+            #if ipconfigIS_DISABLED( ipconfigUSE_IPv4 )
+                /* IPv4 is disabled - release it. */
+                break;
+            #else
+                /* IPv4 is enabled - Continue filter checks. */
+            #endif
+        }
+        else if( ( pxEthernetHeader->xDestinationAddress.ucBytes[ 0 ] == ipMULTICAST_MAC_ADDRESS_IPv6_0 ) &&
+                 ( pxEthernetHeader->xDestinationAddress.ucBytes[ 1 ] == ipMULTICAST_MAC_ADDRESS_IPv6_1 ) )
+        {
+            /* The packet is an IPv6 Multicast */
+            #if ipconfigIS_DISABLED( ipconfigUSE_IPv6 )
+                /* IPv6 is disabled - release it. */
+                break;
+            #else
+                /* IPv6 is enabled - Continue filter checks. */
+            #endif
         }
         else
-        #if ( ( ipconfigUSE_LLMNR == 1 ) && ( ipconfigUSE_DNS != 0 ) )
-            if( memcmp( xLLMNR_MacAddress.ucBytes, pxEthernetHeader->xDestinationAddress.ucBytes, sizeof( MACAddress_t ) ) == 0 )
-            {
-                /* The packet is a request for LLMNR - process it. */
-                eReturn = eProcessBuffer;
-            }
-            else
-        #endif /* ipconfigUSE_LLMNR */
-        #if ( ( ipconfigUSE_MDNS == 1 ) && ( ipconfigUSE_DNS != 0 ) )
-            if( memcmp( xMDNS_MacAddress.ucBytes, pxEthernetHeader->xDestinationAddress.ucBytes, sizeof( MACAddress_t ) ) == 0 )
-            {
-                /* The packet is a request for MDNS - process it. */
-                eReturn = eProcessBuffer;
-            }
-            else
-        #endif /* ipconfigUSE_MDNS */
-        if( ( pxEthernetHeader->xDestinationAddress.ucBytes[ 0 ] == ipMULTICAST_MAC_ADDRESS_IPv6_0 ) &&
-            ( pxEthernetHeader->xDestinationAddress.ucBytes[ 1 ] == ipMULTICAST_MAC_ADDRESS_IPv6_1 ) )
         {
-            /* The packet is a request for LLMNR - process it. */
-            eReturn = eProcessBuffer;
+            /* The packet was not a broadcast, or for this node - release it */
+            break;
         }
-        else
-        {
-            /* The packet was not a broadcast, or for this node, just release
-             * the buffer without taking any other action. */
-            eReturn = eReleaseBuffer;
-        }
-    }
 
-    #if ( ipconfigFILTER_OUT_NON_ETHERNET_II_FRAMES == 1 )
-    {
-        uint16_t usFrameType;
-
-        if( eReturn == eProcessBuffer )
-        {
-            usFrameType = pxEthernetHeader->usFrameType;
-            usFrameType = FreeRTOS_ntohs( usFrameType );
-
-            if( usFrameType <= 0x600U )
-            {
-                /* Not an Ethernet II frame. */
-                eReturn = eReleaseBuffer;
-            }
-        }
-    }
-    #endif /* ipconfigFILTER_OUT_NON_ETHERNET_II_FRAMES == 1  */
+        /* All checks have been passed, process the packet. */
+        eReturn = eProcessBuffer;
+    } while( ipFALSE_BOOL );
 
     return eReturn;
 }
@@ -1535,14 +1618,34 @@ static void prvProcessEthernetPacket( NetworkBufferDescriptor_t * const pxNetwor
     const EthernetHeader_t * pxEthernetHeader;
     eFrameProcessingResult_t eReturned = eReleaseBuffer;
 
-    configASSERT( pxNetworkBuffer != NULL );
-
-    iptraceNETWORK_INTERFACE_INPUT( pxNetworkBuffer->xDataLength, pxNetworkBuffer->pucEthernetBuffer );
-
-    /* Interpret the Ethernet frame. */
-    if( pxNetworkBuffer->xDataLength >= sizeof( EthernetHeader_t ) )
+    /* Use do{}while(pdFALSE) to allow the use of break; */
+    do
     {
-        eReturned = ipCONSIDER_FRAME_FOR_PROCESSING( pxNetworkBuffer->pucEthernetBuffer );
+        /* prvHandleEthernetPacket() already checked for ( pxNetworkBuffer != NULL ) so
+         * it is safe to break out of the do{}while() and let the second half of this
+         * function handle the releasing of pxNetworkBuffer */
+
+        if( ( pxNetworkBuffer->pxInterface == NULL ) || ( pxNetworkBuffer->pxEndPoint == NULL ) )
+        {
+            break;
+        }
+
+        /* Beyond this point,
+         * ( pxNetworkBuffer != NULL ),
+         * ( pxNetworkBuffer->pxInterface != NULL ),
+         * ( pxNetworkBuffer->pxEndPoint != NULL ),
+         * Additionally, FreeRTOS_FillEndPoint() and FreeRTOS_FillEndPoint_IPv6() guarantee
+         * that endpoints always have a valid interface assigned to them, and consequently:
+         * ( pxNetworkBuffer->pxEndPoint->pxInterface != NULL )
+         * None of the above need to be checked again in code that handles incoming packets. */
+
+        iptraceNETWORK_INTERFACE_INPUT( pxNetworkBuffer->xDataLength, pxNetworkBuffer->pucEthernetBuffer );
+
+        /* Interpret the Ethernet frame. */
+        if( pxNetworkBuffer->xDataLength < sizeof( EthernetHeader_t ) )
+        {
+            break;
+        }
 
         /* Map the buffer onto the Ethernet Header struct for easy access to the fields. */
 
@@ -1553,7 +1656,7 @@ static void prvProcessEthernetPacket( NetworkBufferDescriptor_t * const pxNetwor
 
         /* The condition "eReturned == eProcessBuffer" must be true. */
         #if ( ipconfigETHERNET_DRIVER_FILTERS_FRAME_TYPES == 0 )
-            if( eReturned == eProcessBuffer )
+            if( eConsiderFrameForProcessing( pxNetworkBuffer->pucEthernetBuffer ) == eProcessBuffer )
         #endif
         {
             /* Interpret the received Ethernet packet. */
@@ -1604,9 +1707,9 @@ static void prvProcessEthernetPacket( NetworkBufferDescriptor_t * const pxNetwor
                         eReturned = eReleaseBuffer;
                     #endif
                     break;
-            }
+            } /* switch( pxEthernetHeader->usFrameType ) */
         }
-    }
+    } while( pdFALSE );
 
     /* Perform any actions that resulted from processing the Ethernet frame. */
     switch( eReturned )
@@ -1950,7 +2053,7 @@ static eFrameProcessingResult_t prvProcessIPPacket( const IPPacket_t * pxIPPacke
                 }
             }
 
-            if( eReturn != eWaitingARPResolution ) /*TODO eReturn != eReleaseBuffer */
+            if( eReturn != eWaitingARPResolution )
             {
                 switch( ucProtocol )
                 {
@@ -1989,10 +2092,6 @@ static eFrameProcessingResult_t prvProcessIPPacket( const IPPacket_t * pxIPPacke
                                 {
                                     eReturn = eFrameConsumed;
                                 }
-
-                                /* Setting this variable will cause xTCPTimerCheck()
-                                 * to be called just before the IP-task blocks. */
-                                xProcessedTCPMessage++;
                                 break;
                         #endif /* if ipconfigUSE_TCP == 1 */
                     default:
@@ -2094,7 +2193,7 @@ void vReturnEthernetFrame( NetworkBufferDescriptor_t * pxNetworkBuffer,
 
                 #if ( ipconfigUSE_IPv4 != 0 )
                     case ipIPv4_FRAME_TYPE:
-                        pxNetworkBuffer->pxEndPoint = FreeRTOS_FindEndPointOnNetMask( pxIPPacket->xIPHeader.ulDestinationIPAddress, 7 );
+                        pxNetworkBuffer->pxEndPoint = FreeRTOS_FindEndPointOnNetMask( pxIPPacket->xIPHeader.ulDestinationIPAddress );
                         break;
                 #endif /* ( ipconfigUSE_IPv4 != 0 ) */
 
@@ -2182,53 +2281,57 @@ void vReturnEthernetFrame( NetworkBufferDescriptor_t * pxNetworkBuffer,
 }
 /*-----------------------------------------------------------*/
 
+#if ( ipconfigUSE_IPv4 != 0 )
+
 /**
  * @brief Returns the IP address of the NIC.
  *
  * @return The IP address of the NIC.
  */
-uint32_t FreeRTOS_GetIPAddress( void )
-{
-    NetworkEndPoint_t * pxEndPoint;
-    uint32_t ulIPAddress;
+    uint32_t FreeRTOS_GetIPAddress( void )
+    {
+        NetworkEndPoint_t * pxEndPoint;
+        uint32_t ulIPAddress;
 
-    pxEndPoint = FreeRTOS_FirstEndPoint( NULL );
+        pxEndPoint = FreeRTOS_FirstEndPoint( NULL );
 
-    #if ( ipconfigUSE_IPv6 != 0 )
-        if( ENDPOINT_IS_IPv6( pxEndPoint ) )
-        {
-            for( ;
-                 pxEndPoint != NULL;
-                 pxEndPoint = FreeRTOS_NextEndPoint( NULL, pxEndPoint ) )
+        #if ( ipconfigUSE_IPv6 != 0 )
+            if( ENDPOINT_IS_IPv6( pxEndPoint ) )
             {
-                /* Break if the endpoint is IPv4. */
-                if( pxEndPoint->bits.bIPv6 == 0U )
+                for( ;
+                     pxEndPoint != NULL;
+                     pxEndPoint = FreeRTOS_NextEndPoint( NULL, pxEndPoint ) )
                 {
-                    break;
+                    /* Break if the endpoint is IPv4. */
+                    if( pxEndPoint->bits.bIPv6 == 0U )
+                    {
+                        break;
+                    }
                 }
             }
+        #endif /* ( ipconfigUSE_IPv6 != 0 ) */
+
+        /* Returns the IP address of the NIC. */
+        if( pxEndPoint == NULL )
+        {
+            ulIPAddress = 0U;
         }
-    #endif /* ( ipconfigUSE_IPv6 != 0 ) */
+        else if( pxEndPoint->ipv4_settings.ulIPAddress != 0U )
+        {
+            ulIPAddress = pxEndPoint->ipv4_settings.ulIPAddress;
+        }
+        else
+        {
+            ulIPAddress = pxEndPoint->ipv4_defaults.ulIPAddress;
+        }
 
-    /* Returns the IP address of the NIC. */
-    if( pxEndPoint == NULL )
-    {
-        ulIPAddress = 0U;
+        return ulIPAddress;
     }
-    else if( pxEndPoint->ipv4_settings.ulIPAddress != 0U )
-    {
-        ulIPAddress = pxEndPoint->ipv4_settings.ulIPAddress;
-    }
-    else
-    {
-        ulIPAddress = pxEndPoint->ipv4_defaults.ulIPAddress;
-    }
-
-    return ulIPAddress;
-}
 /*-----------------------------------------------------------*/
 
-#if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 )
+#endif /* #if ( ipconfigUSE_IPv4 != 0 ) */
+
+#if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 ) && ( ipconfigUSE_IPv4 != 0 )
 
 /*
  * The helper functions here below assume that there is a single
@@ -2378,7 +2481,7 @@ uint32_t FreeRTOS_GetIPAddress( void )
         }
     }
 /*-----------------------------------------------------------*/
-#endif /* if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 ) */
+#endif /* if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 )  && ( ipconfigUSE_IPv4 != 0 ) */
 
 /**
  * @brief Returns whether the IP task is ready.

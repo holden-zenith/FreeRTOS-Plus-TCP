@@ -80,10 +80,10 @@
     #define ASSERT_CONCAT( a, b )     ASSERT_CONCAT_( a, b )
     #ifdef __COUNTER__
         #define STATIC_ASSERT( e ) \
-    ; enum { ASSERT_CONCAT( static_assert_, __COUNTER__ ) = 1 / ( int ) ( !!( e ) ) }
+    enum { ASSERT_CONCAT( static_assert_, __COUNTER__ ) = ( 1 / ( int ) ( !!( e ) ) ) }
     #else
         #define STATIC_ASSERT( e ) \
-    ; enum { ASSERT_CONCAT( assert_line_, __LINE__ ) = 1 / ( int ) ( !!( e ) ) }
+    enum { ASSERT_CONCAT( assert_line_, __LINE__ ) = ( 1 / ( int ) ( !!( e ) ) ) }
     #endif
 #endif /* ifdef static_assert */
 
@@ -136,19 +136,51 @@
 
 /*---------------------------------------------------------------------------*/
 
+/*===========================================================================*/
+/*                                  MACROS                                   */
+/*===========================================================================*/
+/*---------------------------------------------------------------------------*/
+/*===========================================================================*/
+/*---------------------------------------------------------------------------*/
+/*===========================================================================*/
+/*                           FreeRTOSConfig CHECKS                           */
+/*===========================================================================*/
+
+/*---------------------------------------------------------------------------*/
+
 /*
  * pdFREERTOS_ERRNO_EAFNOSUPPORT
  *
  * Address family not supported by protocol.
  *
- * Note: Now included in FreeRTOS-Kernel/projdefs.h, so this serves as a
- * temporary kernel version check. To be removed in a future version.
+ * Note: pdFREERTOS_ERRNO_EAFNOSUPPORT is now included in
+ * FreeRTOS-Kernel/projdefs.h, defined here for backwards compatibility.
  */
+
+#ifndef pdFREERTOS_ERRNO_EAFNOSUPPORT
+    #define pdFREERTOS_ERRNO_EAFNOSUPPORT    97
+#endif
+
+#if ( INCLUDE_vTaskDelay == 0 )
+    #error INCLUDE_vTaskDelay must be set to 1
+#endif
+
+#if ( INCLUDE_xTaskGetCurrentTaskHandle == 0 )
+    #error INCLUDE_xTaskGetCurrentTaskHandle must be set to 1
+#endif
+
+#if ( configSUPPORT_DYNAMIC_ALLOCATION == 0 )
+    #error configSUPPORT_DYNAMIC_ALLOCATION must be set to 1
+#endif
+
+#if ( configUSE_COUNTING_SEMAPHORES == 0 )
+    #error configUSE_COUNTING_SEMAPHORES must be set to 1
+#endif
 
 /*---------------------------------------------------------------------------*/
 
 /*===========================================================================*/
-/*                                  MACROS                                   */
+/*                           FreeRTOSConfig CHECKS                           */
 /*===========================================================================*/
 /*---------------------------------------------------------------------------*/
 /*===========================================================================*/
@@ -315,9 +347,7 @@
     #error ipconfigRA_SEARCH_TIME_OUT_MSEC must be at least 0
 #endif
 
-#if ( ipconfigRA_SEARCH_TIME_OUT_MSEC > SIZE_MAX )
-    #error ipconfigRA_SEARCH_TIME_OUT_MSEC must be at most portMAX_DELAY * portTICK_PERIOD_MS
-#endif
+STATIC_ASSERT( ipconfigRA_SEARCH_TIME_OUT_MSEC <= ( portMAX_DELAY * portTICK_PERIOD_MS ) );
 
 /*---------------------------------------------------------------------------*/
 
@@ -365,9 +395,7 @@
     #error ipconfigRA_IP_TEST_TIME_OUT_MSEC must be at least 0
 #endif
 
-#if ( ipconfigRA_IP_TEST_TIME_OUT_MSEC > SIZE_MAX )
-    #error ipconfigRA_IP_TEST_TIME_OUT_MSEC must be at most portMAX_DELAY * portTICK_PERIOD_MS
-#endif
+STATIC_ASSERT( ipconfigRA_IP_TEST_TIME_OUT_MSEC <= ( portMAX_DELAY * portTICK_PERIOD_MS ) );
 
 /*---------------------------------------------------------------------------*/
 
@@ -387,7 +415,7 @@
  */
 
 #ifndef ipconfigENDPOINT_DNS_ADDRESS_COUNT
-    #define ipconfigENDPOINT_DNS_ADDRESS_COUNT    ( 2 )
+    #define ipconfigENDPOINT_DNS_ADDRESS_COUNT    ( 2U )
 #endif
 
 #if ( ipconfigENDPOINT_DNS_ADDRESS_COUNT < 1 )
@@ -462,6 +490,8 @@
 #ifndef ipconfigMAX_IP_TASK_SLEEP_TIME
     #define ipconfigMAX_IP_TASK_SLEEP_TIME    pdMS_TO_TICKS( 10000 )
 #endif
+
+STATIC_ASSERT( ipconfigMAX_IP_TASK_SLEEP_TIME <= portMAX_DELAY );
 
 /*---------------------------------------------------------------------------*/
 
@@ -1040,6 +1070,12 @@
     #define ipconfigPHY_LS_HIGH_CHECK_TIME_MS    ( 15000 )
 #endif
 
+#if ( ipconfigPHY_LS_HIGH_CHECK_TIME_MS < 0 )
+    #error ipconfigPHY_LS_HIGH_CHECK_TIME_MS must be at least 0
+#endif
+
+STATIC_ASSERT( pdMS_TO_TICKS( ipconfigPHY_LS_HIGH_CHECK_TIME_MS ) <= portMAX_DELAY );
+
 /*---------------------------------------------------------------------------*/
 
 /*
@@ -1054,6 +1090,12 @@
 #ifndef ipconfigPHY_LS_LOW_CHECK_TIME_MS
     #define ipconfigPHY_LS_LOW_CHECK_TIME_MS    ( 1000 )
 #endif
+
+#if ( ipconfigPHY_LS_LOW_CHECK_TIME_MS < 0 )
+    #error ipconfigPHY_LS_LOW_CHECK_TIME_MS must be at least 0
+#endif
+
+STATIC_ASSERT( pdMS_TO_TICKS( ipconfigPHY_LS_LOW_CHECK_TIME_MS ) <= portMAX_DELAY );
 
 /*---------------------------------------------------------------------------*/
 
@@ -1074,7 +1116,7 @@
  *
  * Type: size_t
  * Unit: count of ports
- * Minimum: 0
+ * Minimum: 1
  * Maximum: 32
  *
  * There can be at most 32 PHY ports, but in most cases there are 4 or less.
@@ -1082,6 +1124,14 @@
 
 #ifndef ipconfigPHY_MAX_PORTS
     #define ipconfigPHY_MAX_PORTS    ( 4 )
+#endif
+
+#if ( ipconfigPHY_MAX_PORTS < 1 )
+    #error ipconfigPHY_MAX_PORTS must be at least 1
+#endif
+
+#if ( ipconfigPHY_MAX_PORTS > 32 )
+    #error ipconfigPHY_MAX_PORTS must be at most 32
 #endif
 
 /*---------------------------------------------------------------------------*/
@@ -1194,6 +1244,10 @@
 #ifndef ipconfigIP_TASK_STACK_SIZE_WORDS
     #define ipconfigIP_TASK_STACK_SIZE_WORDS    configMINIMAL_STACK_SIZE
 #endif
+
+STATIC_ASSERT( ipconfigIP_TASK_STACK_SIZE_WORDS >= configMINIMAL_STACK_SIZE );
+
+STATIC_ASSERT( ipconfigIP_TASK_STACK_SIZE_WORDS <= SIZE_MAX );
 
 /*---------------------------------------------------------------------------*/
 
@@ -1369,9 +1423,7 @@
     #error ipconfigTCP_HANG_PROTECTION_TIME must be at least 0
 #endif
 
-#if ( ipconfigTCP_HANG_PROTECTION_TIME > SIZE_MAX )
-    #error ipconfigTCP_HANG_PROTECTION_TIME must be at most portMAX_DELAY / configTICK_RATE_HZ
-#endif
+STATIC_ASSERT( ipconfigTCP_HANG_PROTECTION_TIME <= ( portMAX_DELAY / configTICK_RATE_HZ ) );
 
 /*---------------------------------------------------------------------------*/
 
@@ -1438,9 +1490,7 @@
     #error ipconfigTCP_KEEP_ALIVE_INTERVAL must be at least 0
 #endif
 
-#if ( ipconfigTCP_KEEP_ALIVE_INTERVAL > SIZE_MAX )
-    #error ipconfigTCP_KEEP_ALIVE_INTERVAL must be at most portMAX_DELAY / configTICK_RATE_HZ
-#endif
+STATIC_ASSERT( ipconfigTCP_KEEP_ALIVE_INTERVAL <= ( portMAX_DELAY / configTICK_RATE_HZ ) );
 
 /*---------------------------------------------------------------------------*/
 
@@ -1469,7 +1519,7 @@
  */
 
 #ifndef ipconfigTCP_MSS
-    #define ipconfigTCP_MSS    ( ipconfigNETWORK_MTU - 40 )
+    #define ipconfigTCP_MSS    ( ipconfigNETWORK_MTU - 40U )
 #endif
 
 #if ( ipconfigTCP_MSS < 536 )
@@ -1772,6 +1822,8 @@
     #define ipconfigUDP_MAX_SEND_BLOCK_TIME_TICKS    pdMS_TO_TICKS( 20 )
 #endif
 
+STATIC_ASSERT( ipconfigUDP_MAX_SEND_BLOCK_TIME_TICKS <= portMAX_DELAY );
+
 /*---------------------------------------------------------------------------*/
 
 /*
@@ -1909,6 +1961,12 @@
     #error Invalid ipconfigSELECT_USES_NOTIFY configuration
 #endif
 
+#if ipconfigIS_ENABLED( ipconfigSELECT_USES_NOTIFY )
+    #if ( configUSE_TASK_NOTIFICATIONS == 0 )
+        #error configUSE_TASK_NOTIFICATIONS must be 1 if ipconfigSELECT_USES_NOTIFY is enabled
+    #endif
+#endif
+
 /*---------------------------------------------------------------------------*/
 
 /*
@@ -1953,6 +2011,8 @@
     #define ipconfigSOCK_DEFAULT_RECEIVE_BLOCK_TIME    portMAX_DELAY
 #endif
 
+STATIC_ASSERT( ipconfigSOCK_DEFAULT_RECEIVE_BLOCK_TIME <= portMAX_DELAY );
+
 /*---------------------------------------------------------------------------*/
 
 /*
@@ -1978,6 +2038,8 @@
 #ifndef ipconfigSOCK_DEFAULT_SEND_BLOCK_TIME
     #define ipconfigSOCK_DEFAULT_SEND_BLOCK_TIME    portMAX_DELAY
 #endif
+
+STATIC_ASSERT( ipconfigSOCK_DEFAULT_SEND_BLOCK_TIME <= portMAX_DELAY );
 
 /*---------------------------------------------------------------------------*/
 
@@ -2215,8 +2277,11 @@
 #endif
 
 #if ( ( ipconfigUSE_DHCP != ipconfigDISABLE ) && ( ipconfigNETWORK_MTU < 586 ) )
-
     #error ipconfigNETWORK_MTU needs to be at least 586 to use DHCP
+#endif
+
+#if ( ipconfigIS_ENABLED( ipconfigUSE_DHCP ) && ipconfigIS_DISABLED( ipconfigUSE_IPv4 ) )
+    #error DHCP Cannot be enabled without IPv4
 #endif
 
 /*---------------------------------------------------------------------------*/
@@ -2363,6 +2428,8 @@
     #endif
 #endif
 
+STATIC_ASSERT( ipconfigMAXIMUM_DISCOVER_TX_PERIOD <= portMAX_DELAY );
+
 /*---------------------------------------------------------------------------*/
 
 /*===========================================================================*/
@@ -2436,7 +2503,7 @@
  */
 
 #ifndef ipconfigDNS_CACHE_ENTRIES
-    #define ipconfigDNS_CACHE_ENTRIES    ( 1 )
+    #define ipconfigDNS_CACHE_ENTRIES    ( 1U )
 #endif
 
 #if ( ipconfigDNS_CACHE_ENTRIES < 1 )
@@ -2470,7 +2537,7 @@
  */
 
 #ifndef ipconfigDNS_CACHE_NAME_LENGTH
-    #define ipconfigDNS_CACHE_NAME_LENGTH    ( 254 )
+    #define ipconfigDNS_CACHE_NAME_LENGTH    ( 254U )
 #endif
 
 #if ( ipconfigDNS_CACHE_NAME_LENGTH < 1 )
@@ -2559,6 +2626,8 @@
     #define ipconfigDNS_RECEIVE_BLOCK_TIME_TICKS    pdMS_TO_TICKS( 5000 )
 #endif
 
+STATIC_ASSERT( ipconfigDNS_RECEIVE_BLOCK_TIME_TICKS <= portMAX_DELAY );
+
 /*---------------------------------------------------------------------------*/
 
 /*
@@ -2579,6 +2648,8 @@
 #ifndef ipconfigDNS_SEND_BLOCK_TIME_TICKS
     #define ipconfigDNS_SEND_BLOCK_TIME_TICKS    pdMS_TO_TICKS( 500 )
 #endif
+
+STATIC_ASSERT( ipconfigDNS_SEND_BLOCK_TIME_TICKS <= portMAX_DELAY );
 
 /*---------------------------------------------------------------------------*/
 
@@ -3044,43 +3115,6 @@
 
 /*---------------------------------------------------------------------------*/
 
-/*
- * ipconfigHAS_ROUTING_STATISTICS
- *
- * Type: BaseType_t ( ipconfigENABLE | ipconfigDISABLE )
- */
-
-#ifndef ipconfigHAS_ROUTING_STATISTICS
-    #define ipconfigHAS_ROUTING_STATISTICS    ipconfigENABLE
-#endif
-
-#if ( ( ipconfigHAS_ROUTING_STATISTICS != ipconfigDISABLE ) && ( ipconfigHAS_ROUTING_STATISTICS != ipconfigENABLE ) )
-    #error Invalid ipconfigHAS_ROUTING_STATISTICS configuration
-#endif
-
-/*---------------------------------------------------------------------------*/
-
-/*
- * ipconfigMULTI_INTERFACE
- *
- * Type: BaseType_t ( ipconfigENABLE | ipconfigDISABLE )
- *
- * Used to let applications know that multiple interfaces are supported by
- * this version of the TCP/IP stack.
- *
- * Must be enabled for demo applications to work.
- */
-
-#ifndef ipconfigMULTI_INTERFACE
-    #define ipconfigMULTI_INTERFACE    ipconfigENABLE
-#endif
-
-#if ( ( ipconfigMULTI_INTERFACE != ipconfigDISABLE ) && ( ipconfigMULTI_INTERFACE != ipconfigENABLE ) )
-    #error Invalid ipconfigMULTI_INTERFACE configuration
-#endif
-
-/*---------------------------------------------------------------------------*/
-
 /*===========================================================================*/
 /*                              ROUTING CONFIG                               */
 /*===========================================================================*/
@@ -3215,7 +3249,7 @@
  */
 
 #ifndef ipconfigTCP_MAY_LOG_PORT
-    #define ipconfigTCP_MAY_LOG_PORT( xPort )    ( ( xPort ) != 23 )
+    #define ipconfigTCP_MAY_LOG_PORT( xPort )    ( ( xPort ) != 23U )
 #endif
 
 #if ( ( ipconfigTCP_MAY_LOG_PORT( 0 ) != 0 ) && ( ipconfigTCP_MAY_LOG_PORT( 0 ) != 1 ) )
@@ -3346,6 +3380,60 @@
 
 /*---------------------------------------------------------------------------*/
 
+/*
+ * ipconfigINCLUDE_EXAMPLE_FREERTOS_PLUS_TRACE_CALLS
+ *
+ * Type: BaseType_t ( ipconfigENABLE | ipconfigDISABLE )
+ *
+ * The macro 'ipconfigINCLUDE_EXAMPLE_FREERTOS_PLUS_TRACE_CALLS' was
+ * introduced to enable a tracing system. Currently it is only used in
+ * BufferAllocation_2.c.
+ */
+
+#ifndef ipconfigINCLUDE_EXAMPLE_FREERTOS_PLUS_TRACE_CALLS
+    #define ipconfigINCLUDE_EXAMPLE_FREERTOS_PLUS_TRACE_CALLS    ipconfigDISABLE
+#endif
+
+/*---------------------------------------------------------------------------*/
+
+/*
+ * ipconfigISO_STRICTNESS_VIOLATION_START, ipconfigISO_STRICTNESS_VIOLATION_END
+ *
+ * Type: compiler pragma injection macros
+ *
+ * These two macros enclose parts of the source that contain intentional
+ * deviations from the ISO C standard. Users, and AI (I welcome our robot
+ * overlords!), can use this to customize static analysis settings such as
+ * the `-pedantic` flag in GCC. These should appear in very few places within
+ * the FreeRTOS TCP source and should enclose only a line or two at a time.
+ * When first introduced, these macros enclosed a single line of source code in
+ * the sockets implementation.
+ *
+ * GCC example
+ *
+ * In gcc, to allow the Free RTOS TCP code to compile with `-pedantic` you can
+ * define these macros as such:
+ *
+ * ```
+ * // Last tested in GCC 10
+ * #define ipconfigISO_STRICTNESS_VIOLATION_START _Pragma("GCC diagnostic push") \
+ *  _Pragma("GCC diagnostic ignored \"-Wpedantic\"")
+ *
+ * #define ipconfigISO_STRICTNESS_VIOLATION_END _Pragma("GCC diagnostic pop")
+ * ```
+ */
+
+#ifndef ipconfigISO_STRICTNESS_VIOLATION_START
+    #define ipconfigISO_STRICTNESS_VIOLATION_START
+#endif
+
+#ifndef ipconfigISO_STRICTNESS_VIOLATION_END
+    #define ipconfigISO_STRICTNESS_VIOLATION_END
+#endif
+
+/*---------------------------------------------------------------------------*/
+
+>>>>>>> main
 /* Should only be included here, ensures trace config is set first. */
 #include "IPTraceMacroDefaults.h"
 

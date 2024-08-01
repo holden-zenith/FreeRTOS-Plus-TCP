@@ -284,7 +284,7 @@ static BaseType_t xZynqNetworkInterfaceInitialise( NetworkInterface_t * pxInterf
 
         #if ( ( ipconfigUSE_MDNS == 1 ) && ( ipconfigUSE_IPv6 != 0 ) )
             XEmacPs_SetHash( pxEMAC_PS, ( void * ) xMDNS_MacAddress.ucBytes );
-            XEmacPs_SetHash( pxEMAC_PS, ( void * ) xMDNS_MACAddressIPv6.ucBytes );
+            XEmacPs_SetHash( pxEMAC_PS, ( void * ) xMDNS_MacAddressIPv6.ucBytes );
         #endif
 
         pxEndPoint = FreeRTOS_NextEndPoint( pxInterface, pxEndPoint );
@@ -507,7 +507,7 @@ static BaseType_t xZynqGetPhyLinkStatus( NetworkInterface_t * pxInterface )
 }
 /*-----------------------------------------------------------*/
 
-#if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 )
+#if ( ipconfigIPv4_BACKWARD_COMPATIBLE != 0 )
 
 /* Do not call the following function directly. It is there for downward compatibility.
  * The function FreeRTOS_IPInit() will call it to initialice the interface and end-point
@@ -515,7 +515,7 @@ static BaseType_t xZynqGetPhyLinkStatus( NetworkInterface_t * pxInterface )
     NetworkInterface_t * pxFillInterfaceDescriptor( BaseType_t xEMACIndex,
                                                     NetworkInterface_t * pxInterface )
     {
-        pxZynq_FillInterfaceDescriptor( xEMACIndex, pxInterface );
+        return pxZynq_FillInterfaceDescriptor( xEMACIndex, pxInterface );
     }
 
 #endif

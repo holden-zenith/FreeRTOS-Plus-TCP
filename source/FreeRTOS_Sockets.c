@@ -1821,7 +1821,7 @@ static BaseType_t prvSocketBindAdd( FreeRTOS_Socket_t * pxSocket,
             #if ( ipconfigUSE_IPv4 != 0 )
                 if( pxAddress->sin_address.ulIP_IPv4 != FREERTOS_INADDR_ANY )
                 {
-                    pxSocket->pxEndPoint = FreeRTOS_FindEndPointOnIP_IPv4( pxAddress->sin_address.ulIP_IPv4, 7 );
+                    pxSocket->pxEndPoint = FreeRTOS_FindEndPointOnIP_IPv4( pxAddress->sin_address.ulIP_IPv4 );
                 }
                 else
             #endif /* ( ipconfigUSE_IPv4 != 0 ) */
@@ -1830,12 +1830,13 @@ static BaseType_t prvSocketBindAdd( FreeRTOS_Socket_t * pxSocket,
             }
         }
 
-        if( pxSocket->pxEndPoint != NULL )
-        {
-            pxSocket->xLocalAddress.ulIP_IPv4 = FreeRTOS_ntohl( pxSocket->pxEndPoint->ipv4_settings.ulIPAddress );
-            /*TODO Check if needed for ipv6 setting */
-        }
-        else
+        #if ( ipconfigUSE_IPv4 != 0 )
+            if( pxSocket->pxEndPoint != NULL )
+            {
+                pxSocket->xLocalAddress.ulIP_IPv4 = FreeRTOS_ntohl( pxSocket->pxEndPoint->ipv4_settings.ulIPAddress );
+            }
+            else
+        #endif /* ( ipconfigUSE_IPv4 != 0 ) */
         #if ( ipconfigUSE_IPv6 != 0 )
             if( pxAddress->sin_family == ( uint8_t ) FREERTOS_AF_INET6 )
             {
@@ -2892,6 +2893,8 @@ BaseType_t FreeRTOS_setsockopt( Socket_t xSocket,
                         /* The type cast of the pointer expression "A" to
                          * type "B" removes const qualifier from the pointed to type. */
 
+                        ipconfigISO_STRICTNESS_VIOLATION_START;
+
                         /* MISRA Ref 11.8.1 [Function pointer and use of const pointer] */
                         /* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-118 */
 
@@ -2901,6 +2904,7 @@ BaseType_t FreeRTOS_setsockopt( Socket_t xSocket,
                         /* coverity[misra_c_2012_rule_11_8_violation] */
                         /* coverity[misra_c_2012_rule_11_1_violation] */
                         pxSocket->pxUserWakeCallback = ( SocketWakeupCallback_t ) pvOptionValue;
+                        ipconfigISO_STRICTNESS_VIOLATION_END;
                         xReturn = 0;
                         break;
                 #endif /* ipconfigSOCKET_HAS_USER_WAKE_CALLBACK */
@@ -3776,8 +3780,6 @@ void vSocketWakeUpUser( FreeRTOS_Socket_t * pxSocket )
         BaseType_t xResult = -pdFREERTOS_ERRNO_EINVAL;
         TimeOut_t xTimeOut;
 
-        ( void ) xAddressLength;
-
         #if ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 )
             struct freertos_sockaddr xTempAddress;
 
@@ -3791,6 +3793,8 @@ void vSocketWakeUpUser( FreeRTOS_Socket_t * pxSocket )
                 pxAddress = &xTempAddress;
             }
         #endif /* ( ipconfigIPv4_BACKWARD_COMPATIBLE == 1 ) */
+
+        ( void ) xAddressLength;
 
         xResult = prvTCPConnectStart( pxSocket, pxAddress );
 
@@ -3888,6 +3892,12 @@ void vSocketWakeUpUser( FreeRTOS_Socket_t * pxSocket )
             if( pxParentSocket->u.xTCP.bits.bReuseSocket == pdFALSE_UNSIGNED )
             {
                 pxClientSocket = pxParentSocket->u.xTCP.pxPeerSocket;
+
+                if( pxClientSocket != NULL )
+                {
+                    FreeRTOS_printf( ( "prvAcceptWaitClient: client %p parent %p\n",
+                                       ( void * ) pxClientSocket, ( void * ) pxParentSocket ) );
+                }
             }
             else
             {
@@ -3896,11 +3906,14 @@ void vSocketWakeUpUser( FreeRTOS_Socket_t * pxSocket )
 
             if( pxClientSocket != NULL )
             {
-                pxParentSocket->u.xTCP.pxPeerSocket = NULL;
-
                 /* Is it still not taken ? */
                 if( pxClientSocket->u.xTCP.bits.bPassAccept != pdFALSE_UNSIGNED )
                 {
+                    if( pxParentSocket->u.xTCP.pxPeerSocket != NULL )
+                    {
+                        pxParentSocket->u.xTCP.pxPeerSocket = NULL;
+                    }
+
                     pxClientSocket->u.xTCP.bits.bPassAccept = pdFALSE_UNSIGNED;
                 }
                 else
@@ -4373,7 +4386,7 @@ void vSocketWakeUpUser( FreeRTOS_Socket_t * pxSocket )
 /**
  * @brief Get a direct pointer to the beginning of the circular transmit buffer.
  *
- * @param[in] xSocket: The socket owning the buffer.
+ * @param[in] xSocket The socket owning the buffer.
  *
  * @return Address the first byte in the circular transmit buffer if all checks pass.
  *         Or else, NULL is returned.
@@ -4938,7 +4951,6 @@ void vSocketWakeUpUser( FreeRTOS_Socket_t * pxSocket )
         /* coverity[misra_c_2012_rule_11_3_violation] */
         const ListItem_t * pxEnd = ( ( const ListItem_t * ) &( xBoundTCPSocketsList.xListEnd ) );
 
-        /* __XX__ TODO ulLocalIP is not used, for misra compliance*/
         ( void ) ulLocalIP;
 
         for( pxIterator = listGET_NEXT( pxEnd );
