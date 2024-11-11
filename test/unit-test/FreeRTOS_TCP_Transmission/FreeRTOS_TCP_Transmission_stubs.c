@@ -45,7 +45,6 @@
 /** @brief The expected IP version and header length coded into the IP header itself. */
 uint16_t usPacketIdentifier;
 BaseType_t xTCPWindowLoggingLevel;
-BaseType_t xBufferAllocFixedSize = pdFALSE;
 
 BaseType_t NetworkInterfaceOutputFunction_Stub_Called = 0;
 

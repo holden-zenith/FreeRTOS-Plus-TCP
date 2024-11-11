@@ -328,9 +328,6 @@ extern uint16_t usPacketIdentifier;
  */
 extern List_t xBoundUDPSocketsList;
 
-/* True when BufferAllocation_1.c was included, false for BufferAllocation_2.c */
-extern const BaseType_t xBufferAllocFixedSize;
-
 /* As FreeRTOS_Routing is included later, use forward declarations
  * of the two structs. */
 struct xNetworkEndPoint;

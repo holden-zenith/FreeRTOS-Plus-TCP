@@ -397,7 +397,6 @@ void test_prvTCPSendRepeated_Zero_To_Send( void )
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
 
-    xBufferAllocFixedSize = pdFALSE;
     pxSocket->u.xTCP.txStream = ( StreamBuffer_t * ) 0x12345678;
     pxSocket->u.xTCP.eTCPState = eCONNECT_SYN;
     pxSocket->u.xTCP.usMSS = 1000;
@@ -1311,8 +1310,6 @@ void test_prvTCPBufferResize_Fixed_Size_With_Buffer( void )
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
 
-    xBufferAllocFixedSize = pdTRUE;
-
     uxIPHeaderSizeSocket_ExpectAnyArgsAndReturn( ipSIZE_OF_IPv4_HEADER );
 
     pReturn = prvTCPBufferResize( pxSocket, pxNetworkBuffer, 500, 0 );
@@ -1328,8 +1325,6 @@ void test_prvTCPBufferResize_Fixed_Size_Without_Buffer( void )
     pxSocket = &xSocket;
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
-
-    xBufferAllocFixedSize = pdTRUE;
 
     NetworkBufferDescriptor_t NewNetworkBuffer;
     NewNetworkBuffer.pucEthernetBuffer = ucEthernetBuffer;
@@ -1349,7 +1344,6 @@ void test_prvTCPBufferResize_Without_Buffer( void )
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
 
-    xBufferAllocFixedSize = pdFALSE;
     NetworkBufferDescriptor_t NewNetworkBuffer;
     NewNetworkBuffer.pucEthernetBuffer = ucEthernetBuffer;
 
@@ -1370,7 +1364,6 @@ void test_prvTCPBufferResize_Without_Buffer_Null_New_Buffer( void )
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
 
-    xBufferAllocFixedSize = pdFALSE;
     NetworkBufferDescriptor_t NewNetworkBuffer;
     NewNetworkBuffer.pucEthernetBuffer = ucEthernetBuffer;
 
@@ -1391,7 +1384,6 @@ void test_prvTCPBufferResize_With_Buffer_LT_Needed_GT_Last_Packet( void )
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
     pxNetworkBuffer->xDataLength = 500;
 
-    xBufferAllocFixedSize = pdFALSE;
     NetworkBufferDescriptor_t NewNetworkBuffer;
     NewNetworkBuffer.pucEthernetBuffer = ucEthernetBuffer;
 
@@ -1414,7 +1406,6 @@ void test_prvTCPBufferResize_With_Buffer_LT_Needed_LT_Last_Packet( void )
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
     pxNetworkBuffer->xDataLength = 10;
 
-    xBufferAllocFixedSize = pdFALSE;
     NetworkBufferDescriptor_t NewNetworkBuffer;
     NewNetworkBuffer.pucEthernetBuffer = ucEthernetBuffer;
 
@@ -1436,7 +1427,6 @@ void test_prvTCPBufferResize_With_Buffer_GT_Needed( void )
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
 
-    xBufferAllocFixedSize = pdFALSE;
     NetworkBufferDescriptor_t NewNetworkBuffer;
     NewNetworkBuffer.pucEthernetBuffer = ucEthernetBuffer;
 
@@ -1501,7 +1491,6 @@ void test_prvTCPPrepareSend_State_Syn_Zero_Data( void )
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
 
-    xBufferAllocFixedSize = pdFALSE;
     pxSocket->u.xTCP.txStream = ( StreamBuffer_t * ) 0x12345678;
     pxSocket->u.xTCP.eTCPState = eCONNECT_SYN;
     pxSocket->u.xTCP.usMSS = 1000;
@@ -1526,7 +1515,6 @@ void test_prvTCPPrepareSend_State_Syn_Zero_Data_Win_Change( void )
 
     uint8_t ReturnEthernetBuffer[ ipconfigNETWORK_MTU ];
 
-    xBufferAllocFixedSize = pdFALSE;
     pxSocket->u.xTCP.txStream = ( StreamBuffer_t * ) 0x12345678;
     pxSocket->u.xTCP.eTCPState = eCONNECT_SYN;
     pxSocket->u.xTCP.usMSS = 1000;
@@ -1550,7 +1538,6 @@ void test_prvTCPPrepareSend_State_Syn_Zero_Data_Keep_Alive( void )
 
     uint8_t ReturnEthernetBuffer[ ipconfigNETWORK_MTU ];
 
-    xBufferAllocFixedSize = pdFALSE;
     pxSocket->u.xTCP.txStream = ( StreamBuffer_t * ) 0x12345678;
     pxSocket->u.xTCP.eTCPState = eCONNECT_SYN;
     pxSocket->u.xTCP.usMSS = 1000;
@@ -1575,7 +1562,6 @@ void test_prvTCPPrepareSend_State_Established_Zero_Data_KLCount1_Age_GT_Max( voi
 
     uint8_t ReturnEthernetBuffer[ ipconfigNETWORK_MTU ];
 
-    xBufferAllocFixedSize = pdFALSE;
     pxSocket->u.xTCP.txStream = NULL;
     pxSocket->u.xTCP.eTCPState = eESTABLISHED;
     pxSocket->u.xTCP.usMSS = 1000;
@@ -1603,7 +1589,6 @@ void test_prvTCPPrepareSend_State_Established_Null_Buffer_Zero_Data_KLCount0_Age
     pxSocket = &xSocket;
     pxNetworkBuffer = NULL;
 
-    xBufferAllocFixedSize = pdFALSE;
     pxSocket->u.xTCP.txStream = NULL;
     pxSocket->u.xTCP.eTCPState = eESTABLISHED;
     pxSocket->u.xTCP.usMSS = 1000;
@@ -1630,7 +1615,6 @@ void test_prvTCPPrepareSend_State_Established_Null_Buffer_Zero_Data_KLCount1_Age
     pxSocket = &xSocket;
     pxNetworkBuffer = NULL;
 
-    xBufferAllocFixedSize = pdFALSE;
     pxSocket->u.xTCP.txStream = NULL;
     pxSocket->u.xTCP.eTCPState = eESTABLISHED;
     pxSocket->u.xTCP.usMSS = 1000;
@@ -1661,7 +1645,6 @@ void test_prvTCPPrepareSend_State_Established_Zero_Data_KLCount1_Age_GT_Max_Win_
 
     uint8_t ReturnEthernetBuffer[ ipconfigNETWORK_MTU ];
 
-    xBufferAllocFixedSize = pdFALSE;
     pxSocket->u.xTCP.txStream = NULL;
     pxSocket->u.xTCP.eTCPState = eESTABLISHED;
     pxSocket->u.xTCP.usMSS = 1000;
@@ -1694,7 +1677,6 @@ void test_prvTCPPrepareSend_State_Established_Non_Zero_Data_No_Buffer( void )
 
     StreamBuffer_t StreamBuffer;
 
-    xBufferAllocFixedSize = pdFALSE;
     pxSocket->u.xTCP.txStream = ( StreamBuffer_t * ) &StreamBuffer;
     pxSocket->u.xTCP.eTCPState = eESTABLISHED;
     pxSocket->u.xTCP.usMSS = 1000;
@@ -1721,7 +1703,6 @@ void test_prvTCPPrepareSend_State_Established_Non_Zero_Data_MSS_0_KLCount4( void
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
 
-    xBufferAllocFixedSize = pdFALSE;
     uint8_t ReturnEthernetBuffer[ ipconfigNETWORK_MTU ];
     NetworkBufferDescriptor_t NewNetworkBuffer;
     NewNetworkBuffer.pucEthernetBuffer = ReturnEthernetBuffer;
@@ -1754,7 +1735,6 @@ void test_prvTCPPrepareSend_State_Established_Non_Zero_Data_Not_Close_Not_ShutDo
     pxNetworkBuffer = &xNetworkBuffer;
     pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
 
-    xBufferAllocFixedSize = pdFALSE;
     uint8_t ReturnEthernetBuffer[ ipconfigNETWORK_MTU ];
     NetworkBufferDescriptor_t NewNetworkBuffer;
     NewNetworkBuffer.pucEthernetBuffer = ReturnEthernetBuffer;
