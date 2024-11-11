@@ -136,6 +136,7 @@ foreach( file ${TCP_INCLUDES} )
                             -UFreeRTOS_htonl
                             -D__COVERITY__
                             -DTEST
+                            -DipconfigIS_ENABLED
                             -DipconfigUSE_IPv6
                             -DipconfigUSE_RA
                             -I ${MODULE_ROOT_DIR}/tools/CMock/vendor/unity/src
@@ -155,6 +156,7 @@ foreach( file ${TCP_INCLUDES} )
                             -UFreeRTOS_htonl
                             -D__COVERITY__
                             -DTEST
+                            -DipconfigIS_ENABLED
                             -I ${MODULE_ROOT_DIR}/tools/CMock/vendor/unity/src
                             -I ${MODULE_ROOT_DIR}/test/FreeRTOS-Kernel/include
                             -I ${UNIT_TEST_DIR}/ConfigFiles

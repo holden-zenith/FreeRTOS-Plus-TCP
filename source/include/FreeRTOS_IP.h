@@ -60,6 +60,11 @@
 #define ipSIZE_OF_UDP_HEADER     8U
 #define ipSIZE_OF_TCP_HEADER     20U
 
+/* The maximum of int32 value. */
+#define ipINT32_MAX_VALUE        ( ( int32_t ) 0x7FFFFFFF )
+
+/* The minimum of int32 value. */
+#define ipINT32_MIN_VALUE        ( ( int32_t ) 0x80000000 )
 
 /*
  * Generate a randomized TCP Initial Sequence Number per RFC.
@@ -270,6 +275,11 @@ uint32_t FreeRTOS_min_uint32( uint32_t a,
 size_t FreeRTOS_min_size_t( size_t a,
                             size_t b );
 
+int32_t FreeRTOS_add_int32( int32_t a,
+                            int32_t b );
+int32_t FreeRTOS_multiply_int32( int32_t a,
+                                 int32_t b );
+
 uint32_t FreeRTOS_round_up( uint32_t a,
                             uint32_t d );
 uint32_t FreeRTOS_round_down( uint32_t a,
@@ -307,7 +317,7 @@ uint32_t FreeRTOS_round_down( uint32_t a,
 /*
  * FULL, UP-TO-DATE AND MAINTAINED REFERENCE DOCUMENTATION FOR ALL THESE
  * FUNCTIONS IS AVAILABLE ON THE FOLLOWING URL:
- * http://www.FreeRTOS.org/FreeRTOS-Plus/FreeRTOS_Plus_TCP/FreeRTOS_TCP_API_Functions.html
+ * https://freertos.org/Documentation/03-Libraries/02-FreeRTOS-plus/02-FreeRTOS-plus-TCP/09-API-reference/01-FreeRTOS-plus-TCP-APIs
  */
 
 /* FreeRTOS_IPInit_Multi() replaces the earlier FreeRTOS_IPInit().  It assumes
@@ -397,12 +407,6 @@ void FreeRTOS_UpdateMACAddress( const uint8_t ucMACAddress[ ipMAC_ADDRESS_LENGTH
                                     uint16_t usIdentifier );
 #endif
 
-/* xARPWaitResolution checks if an IPv4 address is already known. If not
- * it may send an ARP request and wait for a reply.  This function will
- * only be called from an application. */
-BaseType_t xARPWaitResolution( uint32_t ulIPAddress,
-                               TickType_t uxTicksToWait );
-
 BaseType_t FreeRTOS_IsNetworkUp( void );
 
 #if ( ipconfigCHECK_IP_QUEUE_SPACE != 0 )
@@ -445,10 +449,11 @@ BaseType_t xIsNetworkDownEventPending( void );
  * be defined in a user module. */
 BaseType_t xApplicationGetRandomNumber( uint32_t * pulNumber );
 
-/** @brief The pointer to buffer with packet waiting for ARP resolution. This variable
- *  is defined in FreeRTOS_IP.c.
- *  This pointer is for internal use only. */
+/** @brief The pointers to buffers with packet waiting for resolution. These variables
+ *  are defined in FreeRTOS_IP.c.
+ *  These pointers are for internal use only. */
 extern NetworkBufferDescriptor_t * pxARPWaitingNetworkBuffer;
+extern NetworkBufferDescriptor_t * pxNDWaitingNetworkBuffer;
 
 #if ( ipconfigENABLE_BACKWARD_COMPATIBILITY == 1 )
     #define xIPStackEvent_t               IPStackEvent_t

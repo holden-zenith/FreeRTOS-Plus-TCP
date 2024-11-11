@@ -1,3 +1,35 @@
+/*
+ * FreeRTOS+TCP <DEVELOPMENT BRANCH>
+ * Copyright (C) 2022 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
+ *
+ * SPDX-License-Identifier: MIT
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ * http://aws.amazon.com/freertos
+ * http://www.FreeRTOS.org
+ */
+
+/**
+ * @file BufferAllocation.c
+ * @brief Provides static and dynamic methods of buffer allocation
+ */
+
 /* Standard includes. */
 #include <stdint.h>
 
@@ -13,27 +45,37 @@
 #include "NetworkInterface.h"
 #include "NetworkBufferManagement.h"
 
-#if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC )
-    #define baINTERRUPT_BUFFER_GET_THRESHOLD    ( 3 )
-    #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC_CUSTOM_SIZE )
-        uxBufferAllocFixedSize = ipTOTAL_ETHERNET_FRAME_SIZE;
-    #endif
-    STATIC_ASSERT( uxBufferAllocFixedSize > 0 );
-    #define baBUFFER_SIZE            ( uxBufferAllocFixedSize + ipBUFFER_PADDING )
-    #define baBUFFER_SIZE_ALIGNED    ( ( baBUFFER_SIZE + portBYTE_ALIGNMENT ) & ~portBYTE_ALIGNMENT_MASK )
-#else
-
 /* The obtained network buffer must be large enough to hold a packet that might
  * replace the packet that was requested to be sent. */
-    #if ipconfigIS_ENABLED( ipconfigUSE_TCP )
-        #define baMINIMAL_BUFFER_SIZE    TCP_PACKET_SIZE
-    #else
-        #define baMINIMAL_BUFFER_SIZE    sizeof( ARPPacket_t )
-    #endif
-    STATIC_ASSERT( ipconfigETHERNET_MINIMUM_PACKET_BYTES <= baMINIMAL_BUFFER_SIZE );
+#if ipconfigIS_ENABLED( ipconfigUSE_TCP )
+    #define baMINIMAL_BUFFER_SIZE    TCP_PACKET_SIZE
+#else
+    #define baMINIMAL_BUFFER_SIZE    sizeof( ARPPacket_t )
+#endif
 
-    #define baADD_WILL_OVERFLOW( a, b )    ( ( a ) > ( SIZE_MAX - ( b ) ) )
-#endif /* if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC ) */
+/* Compile time assertion with zero runtime effects
+ * it will assert on 'e' not being zero, as it tries to divide by it,
+ * will also print the line where the error occurred in case of failure */
+/* MISRA Ref 20.10.1 [Lack of sizeof operator and compile time error checking] */
+/* More details at: https://github.com/FreeRTOS/FreeRTOS-Plus-TCP/blob/main/MISRA.md#rule-2010 */
+/* coverity[misra_c_2012_rule_20_10_violation] */
+#if defined( ipconfigETHERNET_MINIMUM_PACKET_BYTES )
+    #define ASSERT_CONCAT_( a, b )    a ## b
+    #define ASSERT_CONCAT( a, b )     ASSERT_CONCAT_( a, b )
+    #define STATIC_ASSERT( e ) \
+    enum { ASSERT_CONCAT( assert_line_, __LINE__ ) = 1 / ( !!( e ) ) }
+
+    STATIC_ASSERT( ipconfigETHERNET_MINIMUM_PACKET_BYTES <= baMINIMAL_BUFFER_SIZE );
+#endif
+
+#define baALIGNMENT_MASK    ( portBYTE_ALIGNMENT - 1U )
+#define baADD_WILL_OVERFLOW( a, b ) ( ( a ) > ( SIZE_MAX - ( b ) ) )
+#define baINTERRUPT_BUFFER_GET_THRESHOLD    ( 3 )
+
+#if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE_CUSTOM_BUFFER_SIZE )
+    #define BUFFER_SIZE ( ipTOTAL_ETHERNET_FRAME_SIZE + ipBUFFER_PADDING )
+    #define BUFFER_SIZE_ALIGNED ( ( BUFFER_SIZE + portBYTE_ALIGNMENT ) & ~baALIGNMENT_MASK )
+#endif
 
 static NetworkBufferDescriptor_t xNetworkBuffers[ ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS ];
 
@@ -58,11 +100,11 @@ static BaseType_t xIsValidNetworkDescriptor( const NetworkBufferDescriptor_t * p
     }
     else if( ( index < 0 ) || ( ( UBaseType_t ) index > ( ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS - 1 ) ) )
     {
-        xReturn = pdFALSE;
+    	xReturn = pdFALSE;
     }
     else
     {
-        xReturn = pdTRUE;
+    	xReturn = pdTRUE;
     }
 
     return xReturn;
@@ -105,18 +147,18 @@ static BaseType_t xFreeNetworkBuffer( NetworkBufferDescriptor_t * const pxNetwor
     }
 
     return xListItemAlreadyInFreeList;
+
 }
 
 /*-----------------------------------------------------------*/
 
-static void vInitNetworkBuffer( NetworkBufferDescriptor_t * pxNetworkBuffer,
-                                size_t xRequestedSizeBytes )
+static void vInitNetworkBuffer( NetworkBufferDescriptor_t * pxNetworkBuffer, size_t xRequestedSizeBytes )
 {
     pxNetworkBuffer->xDataLength = xRequestedSizeBytes;
     pxNetworkBuffer->pxInterface = NULL;
     pxNetworkBuffer->pxEndPoint = NULL;
 
-    #if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC )
+    #if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
     {
         /* make sure the buffer is not linked */
         pxNetworkBuffer->pxNextBuffer = NULL;
@@ -154,160 +196,161 @@ UBaseType_t uxGetNumberOfFreeNetworkBuffers( void )
 
 /*-----------------------------------------------------------*/
 
-#if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC )
+#if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
 
-    static uint8_t * pucGetNetworkBuffer( size_t * const pxRequestedSizeBytes )
+static uint8_t * pucGetNetworkBuffer( size_t * const pxRequestedSizeBytes )
+{
+    size_t xSize = *pxRequestedSizeBytes;
+
+    if( xSize < baMINIMAL_BUFFER_SIZE )
     {
-        size_t xSize = *pxRequestedSizeBytes;
+        /* Buffers must be at least large enough to hold a TCP-packet with
+         * headers, or an ARP packet, in case TCP is not included. */
+        xSize = baMINIMAL_BUFFER_SIZE;
+    }
 
-        if( xSize < baMINIMAL_BUFFER_SIZE )
+    BaseType_t xIntegerOverflowed = pdFALSE;
+
+    /* Round up xSize to the nearest multiple of N bytes,
+     * where N equals 'sizeof( size_t )'. */
+    if( ( xSize & baALIGNMENT_MASK ) != 0U )
+    {
+        const size_t xBytesRequiredForAlignment = portBYTE_ALIGNMENT - ( xSize & baALIGNMENT_MASK );
+
+        if( baADD_WILL_OVERFLOW( xSize, xBytesRequiredForAlignment ) == 0 )
         {
-            /* Buffers must be at least large enough to hold a TCP-packet with
-             * headers, or an ARP packet, in case TCP is not included. */
-            xSize = baMINIMAL_BUFFER_SIZE;
-        }
-
-        BaseType_t xIntegerOverflowed = pdFALSE;
-
-        /* Round up xSize to the nearest multiple of N bytes,
-         * where N equals 'sizeof( size_t )'. */
-        if( ( xSize & portBYTE_ALIGNMENT_MASK ) != 0U )
-        {
-            const size_t xBytesRequiredForAlignment = portBYTE_ALIGNMENT - ( xSize & portBYTE_ALIGNMENT_MASK );
-
-            if( baADD_WILL_OVERFLOW( xSize, xBytesRequiredForAlignment ) == 0 )
-            {
-                xSize += xBytesRequiredForAlignment;
-            }
-            else
-            {
-                xIntegerOverflowed = pdTRUE;
-            }
-        }
-
-        size_t xAllocatedBytes;
-
-        if( baADD_WILL_OVERFLOW( xSize, ipBUFFER_PADDING ) == 0 )
-        {
-            xAllocatedBytes = xSize + ipBUFFER_PADDING;
+            xSize += xBytesRequiredForAlignment;
         }
         else
         {
             xIntegerOverflowed = pdTRUE;
         }
-
-        uint8_t * pucEthernetBuffer = NULL;
-
-        if( ( xIntegerOverflowed == pdFALSE ) && ( xAllocatedBytes <= ( SIZE_MAX >> 1 ) ) )
-        {
-            *pxRequestedSizeBytes = xSize;
-
-            /* Allocate a buffer large enough to store the requested Ethernet frame size
-             * and a pointer to a network buffer structure (hence the addition of
-             * ipBUFFER_PADDING bytes). */
-            pucEthernetBuffer = ( uint8_t * ) pvPortMalloc( xAllocatedBytes );
-            configASSERT( pucEthernetBuffer != NULL );
-
-            if( pucEthernetBuffer != NULL )
-            {
-                /* Enough space is left at the start of the buffer to place a pointer to
-                 * the network buffer structure that references this Ethernet buffer.
-                 * Return a pointer to the start of the Ethernet buffer itself. */
-                pucEthernetBuffer += ipBUFFER_PADDING;
-            }
-        }
-
-        return pucEthernetBuffer;
     }
 
-#endif /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC ) */
+    size_t xAllocatedBytes;
 
-/*-----------------------------------------------------------*/
-
-#if ( ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC ) )
-
-    static void vReleaseNetworkBuffer( const uint8_t * const pucEthernetBuffer )
+    if( baADD_WILL_OVERFLOW( xSize, ipBUFFER_PADDING ) == 0 )
     {
-        /* There is space before the Ethernet buffer in which a pointer to the
-         * network buffer that references this Ethernet buffer is stored.  Remove the
-         * space before freeing the buffer. */
+        xAllocatedBytes = xSize + ipBUFFER_PADDING;
+    }
+    else
+    {
+        xIntegerOverflowed = pdTRUE;
+    }
+
+    uint8_t * pucEthernetBuffer = NULL;
+
+    if( ( xIntegerOverflowed == pdFALSE ) && ( xAllocatedBytes <= ( SIZE_MAX >> 1 ) ) )
+    {
+        *pxRequestedSizeBytes = xSize;
+
+        /* Allocate a buffer large enough to store the requested Ethernet frame size
+         * and a pointer to a network buffer structure (hence the addition of
+         * ipBUFFER_PADDING bytes). */
+        pucEthernetBuffer = ( uint8_t * ) pvPortMalloc( xAllocatedBytes );
+        configASSERT( pucEthernetBuffer != NULL );
+
         if( pucEthernetBuffer != NULL )
         {
-            const uint8_t * pucEthernetBufferCopy = pucEthernetBuffer - ipBUFFER_PADDING;
-            vPortFree( ( void * ) pucEthernetBufferCopy );
+            /* Enough space is left at the start of the buffer to place a pointer to
+             * the network buffer structure that references this Ethernet buffer.
+             * Return a pointer to the start of the Ethernet buffer itself. */
+            pucEthernetBuffer += ipBUFFER_PADDING;
         }
     }
 
-#endif /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC ) */
+    return pucEthernetBuffer;
+}
+
+#endif /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE ) */
 
 /*-----------------------------------------------------------*/
 
-#if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC )
+#if ( ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE ) )
 
-    NetworkBufferDescriptor_t * pxResizeNetworkBufferWithDescriptor( NetworkBufferDescriptor_t * pxNetworkBuffer,
-                                                                     size_t xNewSizeBytes )
+static void vReleaseNetworkBuffer( const uint8_t * const pucEthernetBuffer )
+{
+    /* There is space before the Ethernet buffer in which a pointer to the
+     * network buffer that references this Ethernet buffer is stored.  Remove the
+     * space before freeing the buffer. */
+    if( pucEthernetBuffer != NULL )
     {
-        NetworkBufferDescriptor_t * pxNetworkBufferCopy = pxNetworkBuffer;
-        size_t uxSizeBytes = xNewSizeBytes;
+        const uint8_t * pucEthernetBufferCopy = pucEthernetBuffer - ipBUFFER_PADDING;
+        vPortFree( ( void * ) pucEthernetBufferCopy );
+    }
+}
 
-        if( baADD_WILL_OVERFLOW( uxSizeBytes, ipBUFFER_PADDING ) == 0 )
-        {
-            uxSizeBytes += ipBUFFER_PADDING;
+#endif /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE ) */
 
-            uint8_t * const pucBuffer = pucGetNetworkBuffer( &( uxSizeBytes ) );
+/*-----------------------------------------------------------*/
 
-            if( pucBuffer == NULL )
-            {
-                pxNetworkBufferCopy = NULL;
-            }
-            else
-            {
-                pxNetworkBufferCopy->xDataLength = uxSizeBytes;
+#if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
 
-                const size_t xOriginalLength = pxNetworkBufferCopy->xDataLength + ipBUFFER_PADDING;
+NetworkBufferDescriptor_t * pxResizeNetworkBufferWithDescriptor( NetworkBufferDescriptor_t * pxNetworkBuffer,
+                                                                 size_t xNewSizeBytes )
+{
+    NetworkBufferDescriptor_t * pxNetworkBufferCopy = pxNetworkBuffer;
+    size_t uxSizeBytes = xNewSizeBytes;
 
-                if( uxSizeBytes > xOriginalLength )
-                {
-                    uxSizeBytes = xOriginalLength;
-                }
+    if( baADD_WILL_OVERFLOW( uxSizeBytes, ipBUFFER_PADDING ) == 0 )
+    {
+        uxSizeBytes += ipBUFFER_PADDING;
 
-                ( void ) memcpy( pucBuffer - ipBUFFER_PADDING,
-                                 pxNetworkBufferCopy->pucEthernetBuffer - ipBUFFER_PADDING,
-                                 uxSizeBytes );
-                vReleaseNetworkBuffer( pxNetworkBufferCopy->pucEthernetBuffer );
-                pxNetworkBufferCopy->pucEthernetBuffer = pucBuffer;
-            }
-        }
-        else
+        uint8_t * const pucBuffer = pucGetNetworkBuffer( &( uxSizeBytes ) );
+
+        if( pucBuffer == NULL )
         {
             pxNetworkBufferCopy = NULL;
         }
+        else
+        {
+            pxNetworkBufferCopy->xDataLength = uxSizeBytes;
 
-        return pxNetworkBufferCopy;
+            const size_t xOriginalLength = pxNetworkBufferCopy->xDataLength + ipBUFFER_PADDING;
+
+            if( uxSizeBytes > xOriginalLength )
+            {
+                uxSizeBytes = xOriginalLength;
+            }
+
+            ( void ) memcpy( pucBuffer - ipBUFFER_PADDING,
+                             pxNetworkBufferCopy->pucEthernetBuffer - ipBUFFER_PADDING,
+                             uxSizeBytes );
+            vReleaseNetworkBuffer( pxNetworkBufferCopy->pucEthernetBuffer );
+            pxNetworkBufferCopy->pucEthernetBuffer = pucBuffer;
+        }
+    }
+    else
+    {
+        pxNetworkBufferCopy = NULL;
     }
 
-#endif /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC ) */
+    return pxNetworkBufferCopy;
+}
+
+#endif /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE ) */
 
 /*-----------------------------------------------------------*/
 
-#if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC )
+#if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE ) && ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE_CUSTOM_ALLOCATE )
 
-    __attribute__( ( weak ) ) void vNetworkBufferAllocateRAMToBuffers( NetworkBufferDescriptor_t pxNetworkBuffers[ ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS ] )
+void vNetworkBufferAllocateRAMToBuffers( NetworkBufferDescriptor_t pxNetworkBuffers[ ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS ] )
+{
+    // __attribute__( ( section( ".EthBuffersSection" ), aligned( baALIGNMENT_BYTES ) ) );
+    #if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE_CUSTOM_BUFFER_SIZE )
+        static uint8_t ucNetworkPackets[ ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS ][ uxBufferAllocFixedSize ] __attribute__( ( aligned( portBYTE_ALIGNMENT ) ) );
+    #else
+        static uint8_t ucNetworkPackets[ ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS ][ BUFFER_SIZE_ALIGNED ] __attribute__( ( aligned( portBYTE_ALIGNMENT ) ) );
+    #endif
+
+    for( size_t i = 0; i < ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS; ++i )
     {
-        __attribute__( ( aligned( portBYTE_ALIGNMENT ) ) )
-        #if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC_CUSTOM_LOCATION )
-            __attribute__( ( section( ipconfigBUFFER_ALLOC_STATIC_CUSTOM_LOCATION_STRING ) ) )
-        #endif
-        static uint8_t ucNetworkPackets[ ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS ][ baBUFFER_SIZE_ALIGNED ];
-
-        for( size_t i = 0; i < ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS; ++i )
-        {
-            pxNetworkBuffers[ i ].pucEthernetBuffer = &( ucNetworkPackets[ i ][ ipBUFFER_PADDING ] );
-            *( ( uint32_t * ) &( ucNetworkPackets[ i ][ 0 ] ) ) = ( uint32_t ) ( &( pxNetworkBuffers[ i ] ) );
-        }
+        pxNetworkBuffers[ i ].pucEthernetBuffer = &( ucNetworkPackets[ i ][ ipBUFFER_PADDING ] );
+        *( ( uint32_t * ) &( ucNetworkPackets[ i ][ 0 ] ) ) = ( uint32_t ) ( &( pxNetworkBuffers[ i ] ) );
     }
+}
 
-#endif /* if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC ) */
+#endif
 
 /*-----------------------------------------------------------*/
 
@@ -333,7 +376,7 @@ BaseType_t xNetworkBuffersInitialise( void )
                 ( UBaseType_t ) ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS,
                 ( UBaseType_t ) ipconfigNUM_NETWORK_BUFFER_DESCRIPTORS );
         }
-        #endif /* if ipconfigIS_ENABLED( configSUPPORT_STATIC_ALLOCATION ) */
+        #endif
 
         configASSERT( xNetworkBufferSemaphore != NULL );
 
@@ -347,7 +390,7 @@ BaseType_t xNetworkBuffersInitialise( void )
 
             vListInitialise( &xFreeBuffersList );
 
-            #if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC )
+            #if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
             {
                 vNetworkBufferAllocateRAMToBuffers( xNetworkBuffers );
             }
@@ -357,7 +400,7 @@ BaseType_t xNetworkBuffersInitialise( void )
             {
                 NetworkBufferDescriptor_t * pxNetworkBuffer = &xNetworkBuffers[ i ];
 
-                #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC )
+                #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
                 {
                     pxNetworkBuffer->pucEthernetBuffer = NULL;
                 }
@@ -380,12 +423,11 @@ BaseType_t xNetworkBuffersInitialise( void )
 
 /*-----------------------------------------------------------*/
 
-NetworkBufferDescriptor_t * pxGetNetworkBufferWithDescriptor( size_t xRequestedSizeBytes,
-                                                              TickType_t xBlockTimeTicks )
+NetworkBufferDescriptor_t * pxGetNetworkBufferWithDescriptor( size_t xRequestedSizeBytes, TickType_t xBlockTimeTicks )
 {
     NetworkBufferDescriptor_t * pxReturn = NULL;
 
-    #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC )
+    #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
         size_t xRequestedSizeBytesCopy = xRequestedSizeBytes;
 
         if( ( xRequestedSizeBytesCopy < ( size_t ) baMINIMAL_BUFFER_SIZE ) )
@@ -408,9 +450,9 @@ NetworkBufferDescriptor_t * pxGetNetworkBufferWithDescriptor( size_t xRequestedS
             xIntegerOverflowed = pdTRUE;
         }
 
-        if( ( xRequestedSizeBytesCopy & portBYTE_ALIGNMENT_MASK ) != 0U )
+        if( ( xRequestedSizeBytesCopy & baALIGNMENT_MASK ) != 0U )
         {
-            const size_t xBytesRequiredForAlignment = portBYTE_ALIGNMENT - ( xRequestedSizeBytesCopy & portBYTE_ALIGNMENT_MASK );
+            const size_t xBytesRequiredForAlignment = portBYTE_ALIGNMENT - ( xRequestedSizeBytesCopy & baALIGNMENT_MASK );
 
             if( baADD_WILL_OVERFLOW( xRequestedSizeBytesCopy, xBytesRequiredForAlignment ) == 0 )
             {
@@ -435,7 +477,7 @@ NetworkBufferDescriptor_t * pxGetNetworkBufferWithDescriptor( size_t xRequestedS
 
         if( ( xIntegerOverflowed == pdFALSE ) && ( xAllocatedBytes <= ( SIZE_MAX >> 1 ) ) )
         {
-    #endif /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC ) */
+    #endif /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE ) */
 
     if( xNetworkBufferSemaphore != NULL )
     {
@@ -453,14 +495,14 @@ NetworkBufferDescriptor_t * pxGetNetworkBufferWithDescriptor( size_t xRequestedS
             {
                 vUpdateMinimumFreeNetworkBuffers();
 
-                #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC )
+                #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
                 {
                     configASSERT( pxReturn->pucEthernetBuffer == NULL );
 
                     if( xRequestedSizeBytesCopy > 0U )
                     {
                         /* Extra space is obtained so a pointer to the network buffer can
-                         * be stored at the beginning of the buffer. */
+                        * be stored at the beginning of the buffer. */
                         pxReturn->pucEthernetBuffer = ( uint8_t * ) pvPortMalloc( xAllocatedBytes );
 
                         if( pxReturn->pucEthernetBuffer == NULL )
@@ -489,17 +531,17 @@ NetworkBufferDescriptor_t * pxGetNetworkBufferWithDescriptor( size_t xRequestedS
                         }
                     }
                 }
-                #else  /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC ) */
+                #else
                 {
                     vInitNetworkBuffer( pxReturn, xRequestedSizeBytes );
                 }
-                #endif /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC ) */
+                #endif /* if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE ) */
             }
         }
     }
 
-    #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC )
-}
+    #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
+        }
     #endif
 
     if( pxReturn == NULL )
@@ -520,7 +562,7 @@ void vReleaseNetworkBufferAndDescriptor( NetworkBufferDescriptor_t * const pxNet
 {
     if( xIsValidNetworkDescriptor( pxNetworkBuffer ) != pdFALSE )
     {
-        #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_STATIC )
+        #if ipconfigIS_DISABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
         {
             /* Release the storage allocated to the buffer payload. */
             vReleaseNetworkBuffer( pxNetworkBuffer->pucEthernetBuffer );
@@ -551,86 +593,86 @@ void vReleaseNetworkBufferAndDescriptor( NetworkBufferDescriptor_t * const pxNet
 
 /*-----------------------------------------------------------*/
 
-#if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC )
+#if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
 
-    NetworkBufferDescriptor_t * pxNetworkBufferGetFromISR( size_t xRequestedSizeBytes )
+NetworkBufferDescriptor_t * pxNetworkBufferGetFromISR( size_t xRequestedSizeBytes )
+{
+    NetworkBufferDescriptor_t * pxReturn = NULL;
+
+    if( xNetworkBufferSemaphore != NULL )
     {
-        NetworkBufferDescriptor_t * pxReturn = NULL;
-
-        if( xNetworkBufferSemaphore != NULL )
+        /* If there is a semaphore available then there is a buffer available, but,
+         * as this is called from an interrupt, only take a buffer if there are at
+         * least baINTERRUPT_BUFFER_GET_THRESHOLD buffers remaining.  This prevents,
+         * to a certain degree at least, a rapidly executing interrupt exhausting
+         * buffer and in so doing preventing tasks from continuing. */
+        if( uxQueueMessagesWaitingFromISR( ( QueueHandle_t ) xNetworkBufferSemaphore ) > ( UBaseType_t ) baINTERRUPT_BUFFER_GET_THRESHOLD )
         {
-            /* If there is a semaphore available then there is a buffer available, but,
-             * as this is called from an interrupt, only take a buffer if there are at
-             * least baINTERRUPT_BUFFER_GET_THRESHOLD buffers remaining.  This prevents,
-             * to a certain degree at least, a rapidly executing interrupt exhausting
-             * buffer and in so doing preventing tasks from continuing. */
-            if( uxQueueMessagesWaitingFromISR( ( QueueHandle_t ) xNetworkBufferSemaphore ) > ( UBaseType_t ) baINTERRUPT_BUFFER_GET_THRESHOLD )
+            if( xSemaphoreTakeFromISR( xNetworkBufferSemaphore, NULL ) == pdPASS )
             {
-                if( xSemaphoreTakeFromISR( xNetworkBufferSemaphore, NULL ) == pdPASS )
+                /* Protect the structure as it is accessed from tasks and interrupts. */
+                ipconfigBUFFER_ALLOC_LOCK_FROM_ISR();
                 {
-                    /* Protect the structure as it is accessed from tasks and interrupts. */
-                    ipconfigBUFFER_ALLOC_LOCK_FROM_ISR();
-                    {
-                        pxReturn = pxGetNetworkBuffer();
-                    }
-                    ipconfigBUFFER_ALLOC_UNLOCK_FROM_ISR();
+                    pxReturn = pxGetNetworkBuffer();
+                }
+                ipconfigBUFFER_ALLOC_UNLOCK_FROM_ISR();
 
-                    if( pxReturn != NULL )
-                    {
-                        vUpdateMinimumFreeNetworkBuffers();
+                if( pxReturn != NULL )
+                {
+                    vUpdateMinimumFreeNetworkBuffers();
 
-                        vInitNetworkBuffer( pxReturn, xRequestedSizeBytes );
-                    }
+                    vInitNetworkBuffer( pxReturn, xRequestedSizeBytes );
                 }
             }
         }
-
-        if( pxReturn == NULL )
-        {
-            iptraceFAILED_TO_OBTAIN_NETWORK_BUFFER_FROM_ISR();
-        }
-        else
-        {
-            iptraceNETWORK_BUFFER_OBTAINED_FROM_ISR( pxReturn );
-        }
-
-        return pxReturn;
     }
 
-#endif /* if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC ) */
+    if( pxReturn == NULL )
+    {
+        iptraceFAILED_TO_OBTAIN_NETWORK_BUFFER_FROM_ISR();
+    }
+    else
+    {
+        iptraceNETWORK_BUFFER_OBTAINED_FROM_ISR( pxReturn );
+    }
+
+    return pxReturn;
+}
+
+#endif /* if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE ) */
 
 /*-----------------------------------------------------------*/
 
-#if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC )
+#if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE )
 
-    BaseType_t xReleaseNetworkBufferFromISR( NetworkBufferDescriptor_t * const pxNetworkBuffer )
+BaseType_t xReleaseNetworkBufferFromISR( NetworkBufferDescriptor_t * const pxNetworkBuffer )
+{
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    if( xIsValidNetworkDescriptor( pxNetworkBuffer ) != pdFALSE )
     {
-        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+        BaseType_t xListItemAlreadyInFreeList;
 
-        if( xIsValidNetworkDescriptor( pxNetworkBuffer ) != pdFALSE )
+        /* Ensure the buffer is returned to the list of free buffers before the
+         * counting semaphore is 'given' to say a buffer is available. */
+        ipconfigBUFFER_ALLOC_LOCK_FROM_ISR();
         {
-            BaseType_t xListItemAlreadyInFreeList;
+            xListItemAlreadyInFreeList = xFreeNetworkBuffer( pxNetworkBuffer );
+        }
+        ipconfigBUFFER_ALLOC_UNLOCK_FROM_ISR();
 
-            /* Ensure the buffer is returned to the list of free buffers before the
-             * counting semaphore is 'given' to say a buffer is available. */
-            ipconfigBUFFER_ALLOC_LOCK_FROM_ISR();
+        if( xListItemAlreadyInFreeList == pdFALSE )
+        {
+            if( xSemaphoreGiveFromISR( xNetworkBufferSemaphore, &xHigherPriorityTaskWoken ) == pdPASS )
             {
-                xListItemAlreadyInFreeList = xFreeNetworkBuffer( pxNetworkBuffer );
-            }
-            ipconfigBUFFER_ALLOC_UNLOCK_FROM_ISR();
-
-            if( xListItemAlreadyInFreeList == pdFALSE )
-            {
-                if( xSemaphoreGiveFromISR( xNetworkBufferSemaphore, &xHigherPriorityTaskWoken ) == pdPASS )
-                {
-                    iptraceNETWORK_BUFFER_RELEASED( pxNetworkBuffer );
-                }
+                iptraceNETWORK_BUFFER_RELEASED( pxNetworkBuffer );
             }
         }
-
-        return xHigherPriorityTaskWoken;
     }
 
-#endif /* if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_STATIC ) */
+    return xHigherPriorityTaskWoken;
+}
+
+#endif /* if ipconfigIS_ENABLED( ipconfigBUFFER_ALLOC_FIXED_SIZE ) */
 
 /*-----------------------------------------------------------*/

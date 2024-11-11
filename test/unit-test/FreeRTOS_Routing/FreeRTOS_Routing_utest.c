@@ -43,8 +43,11 @@
 #include "mock_event_groups.h"
 
 #include "mock_FreeRTOS_IP.h"
+#include "mock_FreeRTOS_IP_Private.h"
 #include "mock_FreeRTOS_IPv6.h"
 #include "mock_FreeRTOS_Sockets.h"
+#include "mock_FreeRTOS_ARP.h"
+#include "mock_FreeRTOS_ND.h"
 
 #include "FreeRTOS_Routing.h"
 
@@ -1440,11 +1443,15 @@ void test_FreeRTOS_FindEndPointOnIP_IPv4_AnyEndpoint( void )
  * pxNetworkEndPoints is a global variable using in FreeRTOS_Routing as link list head of all endpoints.
  *
  * Test step:
- *  - Create 1 endpoint with IP address 0 and add it to the list.
+ *  - Create 1 endpoint with IP address 0xAB12CD34 and add it to the list.
+ *  - Call FreeRTOS_FindEndPointOnIP_IPv4 to query with 0xAB12CD34.
+ *  - Check if returned endpoint is same.
+ *  - Call FreeRTOS_FindEndPointOnIP_IPv4 to query with 0.
+ *  - Check if returned endpoint is same.
  *  - Call FreeRTOS_FindEndPointOnIP_IPv4 to query with IPV4_DEFAULT_ADDRESS.
- *  - Check if returned endpoint is same.
+ *  - Check if returned endpoint is NULL.
  *  - Call FreeRTOS_FindEndPointOnIP_IPv4 to query with IPV4_DEFAULT_GATEWAY.
- *  - Check if returned endpoint is same.
+ *  - Check if returned endpoint is NULL.
  */
 void test_FreeRTOS_FindEndPointOnIP_IPv4_ZeroAddressEndpoint( void )
 {
@@ -1452,13 +1459,17 @@ void test_FreeRTOS_FindEndPointOnIP_IPv4_ZeroAddressEndpoint( void )
     NetworkEndPoint_t * pxEndPoint = NULL;
 
     memset( &xEndPoint, 0, sizeof( NetworkEndPoint_t ) );
-    xEndPoint.ipv4_settings.ulIPAddress = 0;
+    xEndPoint.ipv4_settings.ulIPAddress = 0xAB12CD34;
     pxNetworkEndPoints = &xEndPoint;
 
+    pxEndPoint = FreeRTOS_FindEndPointOnIP_IPv4( 0xAB12CD34 );
+    TEST_ASSERT_EQUAL( &xEndPoint, pxEndPoint );
+    pxEndPoint = FreeRTOS_FindEndPointOnIP_IPv4( 0 );
+    TEST_ASSERT_EQUAL( &xEndPoint, pxEndPoint );
     pxEndPoint = FreeRTOS_FindEndPointOnIP_IPv4( IPV4_DEFAULT_ADDRESS );
-    TEST_ASSERT_EQUAL( &xEndPoint, pxEndPoint );
+    TEST_ASSERT_EQUAL( NULL, pxEndPoint );
     pxEndPoint = FreeRTOS_FindEndPointOnIP_IPv4( IPV4_DEFAULT_GATEWAY );
-    TEST_ASSERT_EQUAL( &xEndPoint, pxEndPoint );
+    TEST_ASSERT_EQUAL( NULL, pxEndPoint );
 }
 
 /**
@@ -3661,6 +3672,50 @@ void test_FreeRTOS_MatchingEndpoint_MatchCustomFrameType()
 
     pxEndPoint = FreeRTOS_MatchingEndpoint( &xNetworkInterface, ( const uint8_t * ) ( pxProtocolPacket ) );
     TEST_ASSERT_EQUAL( NULL, pxEndPoint );
+}
+
+void test_xCheckRequiresResolution( void )
+{
+    struct xNetworkEndPoint xEndPoint = { 0 };
+    NetworkBufferDescriptor_t xNetworkBuffer, * pxNetworkBuffer;
+    uint8_t ucEthernetBuffer[ ipconfigNETWORK_MTU ];
+    BaseType_t xResult;
+    NetworkInterface_t xInterface;
+
+    pxNetworkBuffer = &xNetworkBuffer;
+    pxNetworkBuffer->pucEthernetBuffer = ucEthernetBuffer;
+
+    IPPacket_t * pxIPPacket = ( ( IPPacket_t * ) pxNetworkBuffer->pucEthernetBuffer );
+    IPHeader_t * pxIPHeader = &( pxIPPacket->xIPHeader );
+
+    xEndPoint.ipv4_settings.ulIPAddress = 0xABCD1234;
+
+    xEndPoint.ipv4_settings.ulNetMask = 0xFFFFFF00;
+    xNetworkBuffer.pxEndPoint = &xEndPoint;
+
+    /* Make sure there is no match. */
+    pxIPHeader->ulSourceIPAddress = ~( xEndPoint.ipv4_settings.ulIPAddress & xEndPoint.ipv4_settings.ulNetMask );
+
+    uxIPHeaderSizePacket_IgnoreAndReturn( ipSIZE_OF_IPv4_HEADER );
+    xCheckRequiresARPResolution_IgnoreAndReturn( pdFALSE );
+
+    xResult = xCheckRequiresResolution( pxNetworkBuffer );
+
+    TEST_ASSERT_EQUAL( pdFALSE, xResult );
+
+    uxIPHeaderSizePacket_IgnoreAndReturn( ipSIZE_OF_IPv6_HEADER );
+    xCheckRequiresNDResolution_IgnoreAndReturn( pdFALSE );
+
+    xResult = xCheckRequiresResolution( pxNetworkBuffer );
+
+    TEST_ASSERT_EQUAL( pdFALSE, xResult );
+
+    uxIPHeaderSizePacket_IgnoreAndReturn( 1 );
+    xCheckRequiresNDResolution_IgnoreAndReturn( pdFALSE );
+
+    xResult = xCheckRequiresResolution( pxNetworkBuffer );
+
+    TEST_ASSERT_EQUAL( pdFALSE, xResult );
 }
 
 /**

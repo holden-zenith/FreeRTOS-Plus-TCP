@@ -96,11 +96,11 @@ void prvTCPReturnPacket_IPV4( FreeRTOS_Socket_t * pxSocket,
 }
 
 /* Abstraction of eNDGetCacheEntry. */
-eARPLookupResult_t eNDGetCacheEntry( IPv6_Address_t * pxIPAddress,
-                                     MACAddress_t * const pxMACAddress,
-                                     struct xNetworkEndPoint ** ppxEndPoint )
+eResolutionLookupResult_t eNDGetCacheEntry( IPv6_Address_t * pxIPAddress,
+                                            MACAddress_t * const pxMACAddress,
+                                            struct xNetworkEndPoint ** ppxEndPoint )
 {
-    eARPLookupResult_t xReturn;
+    eResolutionLookupResult_t xReturn;
 
     __CPROVER_assert( __CPROVER_r_ok( pxIPAddress, sizeof( IPv6_Address_t ) ), "pxIPAddress must be readable" );
     __CPROVER_assert( __CPROVER_w_ok( pxMACAddress, sizeof( MACAddress_t ) ), "pxMACAddress must be writeable" );
@@ -203,6 +203,8 @@ void harness()
 
     /* The code does not expect both of these to be equal to NULL at the same time. */
     __CPROVER_assume( pxSocket != NULL || pxNetworkBuffer != NULL );
+    /* ucPeerWinScaleFactor is limited in range [0,14]. */
+    __CPROVER_assume( pxSocket->u.xTCP.ucMyWinScaleFactor <= tcpTCP_OPT_WSOPT_MAXIMUM_VALUE );
 
     /* If network buffer is properly created. */
     if( pxNetworkBuffer != NULL )
